@@ -1,180 +1,223 @@
-# .data File Setup and Execution Guide
+# DotData Setup Guide
+
+This guide helps you set up your environment to work with **DotData** files for MongoDB operations and API testing.
 
 ## Prerequisites
 
-### 1. MongoDB Installation
+- **MongoDB** server running locally or accessible remotely
+- **Node.js** runtime for the API server
+- **Code editor** (VS Code, IntelliJ, etc.) with HTTP client support
+
+## MongoDB Setup
+
+### 1. Install MongoDB
+
+**macOS (using Homebrew):**
 ```bash
-# Install MongoDB Community Edition
-# For macOS (using Homebrew):
-brew tap mongodb/brew
 brew install mongodb-community
-
-# Start MongoDB service
-brew services start mongodb/brew/mongodb-community
-
-# Verify MongoDB is running
-mongosh --eval "db.adminCommand('ismaster')"
+brew services start mongodb-community
 ```
 
-### 2. Project Dependencies
+**Ubuntu/Debian:**
 ```bash
-# Ensure Node.js and npm are installed
-node --version
-npm --version
+sudo apt-get install mongodb
+sudo systemctl start mongodb
+sudo systemctl enable mongodb
+```
 
-# Install project dependencies
+**Windows:**
+Download and install from [MongoDB Download Center](https://www.mongodb.com/try/download/community)
+
+### 2. Verify MongoDB Installation
+
+```bash
+mongo --version
+# Should show: MongoDB shell version v5.x or higher
+```
+
+### 3. Connect to MongoDB
+
+```bash
+mongo
+# Should connect to MongoDB shell at localhost:27017
+```
+
+## DotData File Structure
+
+Create your DotData files with the `.data` extension:
+
+```
+project/
+├── data-files/
+│   ├── reportingapi/
+│   │   ├── get-drivers.data       # Test data setup
+│   │   └── get-drivers.http       # API test requests
+│   └── users/
+│       ├── user-management.data   # User test data
+│       └── user-tests.http        # User API tests
+```
+
+## Running DotData Files
+
+### Option 1: Manual Execution (Current)
+
+Since DotData is a new format, you'll need to manually convert operations to MongoDB commands:
+
+1. **Open your DotData file** (e.g., `get-drivers.data`)
+2. **Copy the operations** you want to execute
+3. **Translate to MongoDB syntax** and run in MongoDB shell
+
+**Example DotData:**
+```data
+INSERT users
+{
+  "_id": "user_001",
+  "name": "John Doe", 
+  "email": "john@test.com"
+}
+```
+
+**MongoDB Shell equivalent:**
+```javascript
+use roadwarrior
+db.users.insertOne({
+  "_id": "user_001",
+  "name": "John Doe",
+  "email": "john@test.com"
+})
+```
+
+### Option 2: Future - DotData Executor (Planned)
+
+A DotData executor tool is planned for direct execution:
+
+```bash
+# Future planned syntax
+dotdata-cli execute get-drivers.data
+```
+
+## API Server Setup
+
+### 1. Install Dependencies
+
+```bash
+cd your-project-root
 npm install
 ```
 
-## File Structure
+### 2. Configure Database Connection
 
-Your `.data` file should be structured as follows:
+Update your MongoDB connection in `config/mongo.js`:
 
-```data
-### Example API Test Data Setup
-MONGO localhost:27017/roadwarrior
-
-### Variables for consistency
-@accountId = test-account-123
-@userId = test-user-456
-
-### Insert test account
-INSERT accounts
-{
-  "_id": "{{accountId}}",
-  "name": "Test Account",
-  "created": "{{$now}}"
-}
-
-### Simple user insert
-INSERT users WHERE _id = "{{userId}}" SET name = "Test User"
-
-### Complex user setup
-INSERT users
-{
-  "_id": "{{userId}}",
-  "accountId": "{{accountId}}",
-  "email": "test@example.com",
-  "userType": 1,
-  "isActive": true,
-  "created": "{{$now}}"
-}
-
-### Complex query example  
-FIND users
-WHERE:
-  - accountId = "{{accountId}}"
-  - userType = 1
-  - isActive = true
-SELECT:
-  - name
-  - email
-  - created
-SORT created DESC
-LIMIT 10
-EXPECT 1 result
-
-### === CLEANUP ===
-DELETE users WHERE accountId = "{{accountId}}"
-DELETE accounts WHERE _id = "{{accountId}}"
-```
-
-## Execution Steps
-
-### Step 1: Prepare Your .data File
-
-1. Create your `.data` file with the database connection
-2. Define variables for reusable values
-3. Add your data operations (INSERT, UPDATE, DELETE, FIND)
-4. Include cleanup operations at the end
-
-### Step 2: Manual Execution (Current Method)
-
-**Option A: Using MongoDB Compass or mongosh**
-```bash
-# Connect to your database
-mongosh "mongodb://localhost:27017/roadwarrior"
-
-# Manually execute each operation, substituting variables:
-db.accounts.insertOne({
-  "_id": "test-account-123", 
-  "name": "Test Account",
-  "created": new Date()
-})
-
-db.users.insertOne({
-  "_id": "test-user-456",
-  "accountId": "test-account-123", 
-  "email": "test@example.com",
-  "userType": 1,
-  "isActive": true,
-  "created": new Date()
-})
-
-# Verify data
-db.users.find({"accountId": "test-account-123", "userType": 1}).pretty()
-```
-
-**Option B: Generate MongoDB Script**
 ```javascript
-// Convert your .data operations to MongoDB JavaScript
-use roadwarrior
-
-// Variables
-const accountId = "test-account-123"
-const userId = "test-user-456"
-const now = new Date()
-
-// Insert operations
-db.accounts.insertOne({
-  "_id": accountId,
-  "name": "Test Account", 
-  "created": now
-})
-
-db.users.insertOne({
-  "_id": userId,
-  "accountId": accountId,
-  "email": "test@example.com",
-  "userType": 1,
-  "isActive": true,
-  "created": now
-})
-
-// Query verification
-const result = db.users.find({
-  "accountId": accountId,
-  "userType": 1,
-  "isActive": true
-}).toArray()
-
-print(`Found ${result.length} users`)
-print(JSON.stringify(result, null, 2))
-
-// Cleanup
-db.users.deleteMany({"accountId": accountId})
-db.accounts.deleteMany({"_id": accountId})
+module.exports = {
+  url: 'mongodb://localhost:27017/roadwarrior',
+  options: {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+  }
+}
 ```
 
-### Step 3: Start Your API Server
+### 3. Start the API Server
 
 ```bash
-# In your project directory
 npm start
 # or
 node app/core-api/server.ts
 ```
 
-The API should be available at `http://localhost:3000` (or your configured port).
+The server should start on `http://localhost:3000` (or your configured port).
 
-### Step 4: Execute HTTP Tests
+## Running HTTP Tests
 
-Create your corresponding `.http` file:
+### 1. Open HTTP File
+
+Open your `.http` file (e.g., `get-drivers.http`) in VS Code with the REST Client extension.
+
+### 2. Execute Requests
+
+Click the "Send Request" button above each HTTP request:
 
 ```http
-### Test GetDrivers API with inserted data
-GET http://localhost:3000/GetDrivers?startEpoc=1640995200&endEpoc=1672531199
-AuthToken: {{sessionToken}}
+### Test 1: Valid request with proper authentication
+GET http://localhost:3000/api/reporting/GetDrivers?startEpoc=1609459200&endEpoc=1640995200
+AuthToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+## Complete Testing Workflow
+
+### 1. Prepare Test Data (DotData)
+
+```data
+# get-drivers.data
+=== Test Data Setup ===
+
+@TRACK_CHANGES = true
+@CHANGE_TAG = "get_drivers_test"
+
+# Insert test organization
+INSERT organizations
+{
+  "_id": "org_test_001",
+  "name": "Test Organization",
+  "domain": "testorg.com"
+}
+
+# Insert test users (drivers)
+INSERT_MANY users [
+  {
+    "_id": "driver_001",
+    "orgId": "org_test_001", 
+    "name": "John Driver",
+    "email": "john@testorg.com",
+    "UserType": 1,
+    "IsActive": true,
+    "IsDeleted": false
+  },
+  {
+    "_id": "driver_002", 
+    "orgId": "org_test_001",
+    "name": "Jane Driver", 
+    "email": "jane@testorg.com",
+    "UserType": 1,
+    "IsActive": true,
+    "IsDeleted": false
+  }
+]
+
+# Insert test session
+INSERT sessions
+{
+  "_id": "session_test_001",
+  "UserId": "driver_001",
+  "OrgId": "org_test_001",
+  "Role": 1,
+  "UserIsActive": true,
+  "SeshIsDeleted": false,
+  "AuthToken": "test_token_12345"
+}
+```
+
+### 2. Execute Test Data Setup
+
+Manually convert and run the DotData operations in MongoDB shell:
+
+```javascript
+use roadwarrior
+
+// Insert test data
+db.organizations.insertOne({...})
+db.users.insertMany([...])  
+db.sessions.insertOne({...})
+```
+
+### 3. Run API Tests (HTTP)
+
+```http
+### Test GetDrivers API
+GET http://localhost:3000/api/reporting/GetDrivers?startEpoc=1609459200&endEpoc=1640995200
+AuthToken: test_token_12345
 
 ### Expected Response:
 # HTTP/1.1 200 OK
@@ -182,172 +225,106 @@ AuthToken: {{sessionToken}}
 # 
 # [
 #   {
-#     "_id": "test-user-456",
-#     "name": "Test User",
-#     "email": "test@example.com", 
-#     "userType": 1,
-#     "isActive": true
+#     "_id": "driver_001",
+#     "name": "John Driver", 
+#     "email": "john@testorg.com"
+#   },
+#   {
+#     "_id": "driver_002",
+#     "name": "Jane Driver",
+#     "email": "jane@testorg.com" 
 #   }
 # ]
 ```
 
-## Future: Automated .data Runner
+### 4. Clean Up Test Data (DotData)
 
-### Planned Implementation
+```data
+=== Cleanup ===
 
-A future `.data` runner tool will:
+# Rollback all tracked changes
+ROLLBACK_CHANGES WHERE tag = "get_drivers_test"
 
-1. **Parse .data files** - Read and validate syntax
-2. **Variable substitution** - Replace `{{variable}}` and function calls
-3. **Execute operations** - Run MongoDB operations in sequence
-4. **Transaction support** - Handle BEGIN/COMMIT/ROLLBACK
-5. **Error handling** - Capture and report execution errors
-6. **Performance monitoring** - Track operation timing
-
-### Expected Usage
-
-```bash
-# Execute .data file
-data-runner execute get-drivers.data
-
-# Execute with cleanup
-data-runner execute get-drivers.data --cleanup
-
-# Dry run (validate only)
-data-runner validate get-drivers.data
-
-# Benchmark mode
-data-runner benchmark get-drivers.data --iterations 100
+# Verify cleanup
+SHOW_CHANGES  # Should be empty
 ```
 
-## Expected Data Structure After Execution
+**Manual cleanup** (until DotData executor exists):
 
-After running the `/GetDrivers` endpoint data setup, you should have:
-
-### Accounts Collection
 ```javascript
-{
-  "_id": "test-account-123",
-  "name": "Test Account",
-  "email": "test@example.com", 
-  "isActive": true,
-  "created": ISODate("2024-01-15T10:00:00Z")
-}
-```
-
-### Users Collection (Drivers)
-```javascript
-[
-  {
-    "_id": "driver-active-1",
-    "accountId": "test-account-123",
-    "name": "John Driver",
-    "email": "john@example.com",
-    "userType": 1,  // RwRoleTypes.Driver
-    "isActive": true,
-    "isDeleted": false,
-    "created": ISODate("2024-01-15T10:00:00Z")
-  },
-  {
-    "_id": "driver-active-2", 
-    "accountId": "test-account-123",
-    "name": "Jane Driver",
-    "email": "jane@example.com",
-    "userType": 1,
-    "isActive": true,
-    "isDeleted": false,
-    "created": ISODate("2024-01-15T10:00:00Z")
-  }
-]
-```
-
-### Sessions Collection
-```javascript
-{
-  "_id": "test-session-123",
-  "userId": "admin-user-123",
-  "accountId": "test-account-123", 
-  "orgId": "test-org-123",
-  "token": "test-auth-token-123",
-  "expires": ISODate("2024-01-22T10:00:00Z"),
-  "isActive": true,
-  "created": ISODate("2024-01-15T10:00:00Z")
-}
-```
-
-## Expected API Response
-
-After data setup, calling the GetDrivers API should return:
-
-```json
-{
-  "code": 200,
-  "data": [
-    {
-      "_id": "driver-active-1",
-      "name": "John Driver", 
-      "email": "john@example.com",
-      "userType": 1,
-      "isActive": true,
-      "created": "2024-01-15T10:00:00.000Z"
-    },
-    {
-      "_id": "driver-active-2",
-      "name": "Jane Driver",
-      "email": "jane@example.com", 
-      "userType": 1,
-      "isActive": true,
-      "created": "2024-01-15T10:00:00.000Z"
-    }
-  ]
-}
+// Clean up test data
+db.sessions.deleteOne({"_id": "session_test_001"})
+db.users.deleteMany({"orgId": "org_test_001"})
+db.organizations.deleteOne({"_id": "org_test_001"})
 ```
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **MongoDB Connection Failed**
-   ```bash
-   # Check if MongoDB is running
-   brew services list | grep mongodb
-   
-   # Start MongoDB if stopped
-   brew services start mongodb/brew/mongodb-community
-   ```
-
-2. **Database/Collection Not Found**
-   - MongoDB creates databases and collections automatically on first insert
-   - Ensure your connection string database name matches your API configuration
-
-3. **Variable Substitution Errors**
-   - Ensure all variables are declared before use: `@variable = value`
-   - Check variable names match exactly: `{{variable}}`
-
-4. **API Authentication Errors**
-   - Verify session data exists and matches expected structure
-   - Check AuthToken header in your HTTP requests
-   - Ensure session hasn't expired
-
-5. **Data Type Mismatches**
-   - Use string IDs, not ObjectId: `"_id": "string-id"`
-   - Ensure date formats are ISO strings: `"{{$now}}"`
-   - Check numeric fields are proper numbers, not strings
-
-### Validation Commands
+### MongoDB Connection Issues
 
 ```bash
-# Check MongoDB connection
-mongosh "mongodb://localhost:27017/roadwarrior" --eval "db.adminCommand('ping')"
+# Check if MongoDB is running
+sudo systemctl status mongodb  # Ubuntu/Debian
+brew services list | grep mongodb  # macOS
 
-# Verify collections exist
-mongosh "mongodb://localhost:27017/roadwarrior" --eval "db.getCollectionNames()"
-
-# Check user data
-mongosh "mongodb://localhost:27017/roadwarrior" --eval "db.users.find({userType: 1}).pretty()"
-
-# Verify session data  
-mongosh "mongodb://localhost:27017/roadwarrior" --eval "db.sessions.find({isActive: true}).pretty()"
+# Check MongoDB logs
+tail -f /var/log/mongodb/mongod.log  # Ubuntu/Debian
+tail -f /usr/local/var/log/mongodb/mongo.log  # macOS
 ```
 
-This guide provides the complete workflow for setting up test data using the `.data` format and executing API tests manually until an automated runner is implemented. 
+### API Server Issues
+
+```bash
+# Check if server is running
+curl http://localhost:3000/health
+
+# Check server logs
+npm run logs
+```
+
+### DotData Syntax Issues
+
+- Ensure proper indentation for multi-line syntax
+- Check that all strings are properly quoted
+- Verify MongoDB connection string in MONGO directive
+- Use `#` or `//` for comments
+
+## Editor Configuration
+
+### VS Code Extensions
+
+Install these extensions for the best DotData experience:
+
+1. **REST Client** - For executing `.http` files
+2. **MongoDB for VS Code** - For MongoDB database browsing
+3. **YAML** - For syntax highlighting (similar to DotData)
+
+### VS Code Settings
+
+Add to your `settings.json`:
+
+```json
+{
+  "files.associations": {
+    "*.data": "yaml"
+  },
+  "rest-client.environmentVariables": {
+    "local": {
+      "baseUrl": "http://localhost:3000",
+      "authToken": "your-test-token-here"
+    }
+  }
+}
+```
+
+## Next Steps
+
+1. **Create your first DotData file** for your API endpoint
+2. **Set up corresponding HTTP test file**
+3. **Follow the testing workflow** above
+4. **Wait for DotData executor** for automated execution
+
+For more advanced DotData features, see:
+- `README.md` - Complete syntax guide
+- `SPECS.md` - Technical specifications
+- `format-examples/` - Example DotData files 

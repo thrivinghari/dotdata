@@ -1,4 +1,4 @@
-# .data File Format - Complete Technical Specification
+# DotData File Format - Complete Technical Specification
 
 ## Document Purpose
 
@@ -1667,3 +1667,586 @@ FIND products WHERE _id = "507f1f77bcf86cd799439020"  # ObjectId (collection hin
 FIND products WHERE _id = String("custom_product_id")  # String (explicit cast)
 FIND users WHERE _id = "user_123"  # String (collection hint)
 ```
+
+## Backup, Restore & Temporary Data Management
+
+### Automatic Change Tracking
+
+**Purpose**: Automatically track every change made by the DotData file for precise rollback.
+
+**System Variables**:
+- `@TRACK_CHANGES = true/false` - Enable/disable automatic change tracking (default: true)
+- `@ROLLBACK_ON_ERROR = true/false` - Automatically rollback changes on error (default: false)  
+- `@CHANGE_TAG = "string"` - Tag changes for selective rollback
+
+**Change Tracking Behavior**:
+- **INSERT**: Document is tracked for deletion on rollback
+- **UPDATE**: Original field values are automatically backed up before change
+- **DELETE**: Complete document is backed up before deletion
+- **UPSERT**: Tracks whether operation was insert or update for proper rollback
+
+**Examples**:
+```data
+# Enable change tracking (default)
+@TRACK_CHANGES = true
+
+# Insert tracked for deletion
+INSERT users {"_id": "new_user", "name": "Test User"}
+
+# Update tracked with original values backup
+UPDATE users WHERE _id = "existing_user" SET email = "new@test.com"
+
+# Delete tracked with full document backup  
+DELETE users WHERE _id = "temp_user"
+```
+
+### Granular Rollback Operations
+
+**Purpose**: Rollback specific changes made by current DotData file execution.
+
+**Syntax**:
+```data
+ROLLBACK_CHANGES [WHERE conditions]
+ROLLBACK_INSERTS [WHERE conditions]
+ROLLBACK_UPDATES [WHERE conditions] 
+ROLLBACK_DELETES [WHERE conditions]
+ROLLBACK_DOCUMENT <collection> <id_field> <id_value>
+ROLLBACK_OPERATION <operation_index>
+```
+
+**Examples**:
+```data
+# Rollback all tracked changes
+ROLLBACK_CHANGES
+
+# Rollback only insertions (delete inserted documents)
+ROLLBACK_INSERTS
+
+# Rollback only updates (restore original values)
+ROLLBACK_UPDATES
+
+# Rollback only deletions (re-insert deleted documents)
+ROLLBACK_DELETES
+
+# Rollback specific document
+ROLLBACK_DOCUMENT users "_id" "new_user_001"
+
+# Rollback by operation order
+ROLLBACK_OPERATION 1        # Rollback first operation
+ROLLBACK_OPERATION 3        # Rollback third operation
+
+# Rollback with conditions
+ROLLBACK_CHANGES WHERE tag = "user_test"
+```
+
+**Rollback Behavior**:
+- **Rollback INSERT**: Executes `DELETE` for the inserted document
+- **Rollback UPDATE**: Executes `UPDATE` with original backed-up values
+- **Rollback DELETE**: Executes `INSERT` with the backed-up document
+- **Rollback UPSERT**: Either `DELETE` (was insert) or `UPDATE` (was update)
+
+### Change History Operations
+
+**Purpose**: View and verify tracked changes before rollback.
+
+**Syntax**:
+```data
+SHOW_CHANGES [collection] [WHERE conditions]
+VERIFY_ROLLBACK [WHERE conditions]
+EXPORT_CHANGES TO "<filename>"
+IMPORT_CHANGES FROM "<filename>"
+```
+
+**Examples**:
+```data
+# Show all tracked changes
+SHOW_CHANGES
+
+# Show changes for specific collection
+SHOW_CHANGES users
+
+# Show changes with conditions
+SHOW_CHANGES users WHERE _id = "test_user_001"
+
+# Verify rollback is possible
+VERIFY_ROLLBACK
+
+# Export change history
+EXPORT_CHANGES TO "test_changes.json"
+
+# Import and replay changes
+IMPORT_CHANGES FROM "test_changes.json"
+REPLAY_CHANGES
+```
+
+**Change History Format**:
+```json
+{
+  "operationIndex": 1,
+  "type": "INSERT|UPDATE|DELETE|UPSERT",
+  "collection": "users",
+  "document": {...},
+  "originalValues": {...},  // For UPDATE operations
+  "timestamp": "2024-01-01T10:00:00Z",
+  "tag": "user_test"
+}
+```
+
+### Collection-Level Backup Operations
+
+**Purpose**: Traditional backup operations for collection-level safety.
+
+**Syntax**:
+```data
+BACKUP <collection> [WHERE conditions] TO "<backup_name>"
+BACKUP_COLLECTIONS [collection_list] TO "<backup_name>"
+```
+
+**Examples**:
+```data
+# Backup entire collection
+BACKUP users TO "users_backup_001"
+
+# Backup with conditions
+BACKUP orders 
+WHERE status = "active" AND createdAt >= "{{$pastDate:30d}}"
+TO "active_orders_backup"
+
+# Backup multiple collections
+BACKUP_COLLECTIONS ["users", "orders", "products"] TO "api_test_backup"
+```
+
+**Backup Options**:
+- `COMPRESSION` - Enable backup compression
+- `ENCRYPTION` - Encrypt backup data
+- `INCREMENTAL FROM <previous_backup>` - Only backup changes since previous backup
+
+### Collection-Level Restore Operations
+
+**Purpose**: Restore previously backed up collections.
+
+**Syntax**:
+```data
+RESTORE <collection> FROM "<backup_name>" [MODE <mode>]
+RESTORE_COLLECTIONS FROM "<backup_name>"
+```
+
+**Restore Modes**:
+- `replace` - Completely replace collection with backup (default)
+- `merge` - Merge backup data with existing data
+- `skip` - Skip conflicts, keep existing data
+- `error` - Throw error on conflicts
+
+**Examples**:
+```data
+# Simple restore (replace mode)
+RESTORE users FROM "users_backup_001"
+
+# Restore with merge mode
+RESTORE products FROM "products_backup" MODE merge
+
+# Restore multiple collections
+RESTORE_COLLECTIONS FROM "api_test_backup"
+
+# Conditional restore
+RESTORE users FROM "users_backup_001"
+WHERE _id IN ["user_001", "user_002"]
+FIELDS: ["email", "profile", "settings"]
+```
+
+### Snapshot Operations
+
+**Purpose**: Point-in-time snapshots of entire database state.
+
+**Syntax**:
+```data
+CREATE_SNAPSHOT "<snapshot_name>" [INCLUDE_COLLECTIONS [collection_list]]
+RESTORE_SNAPSHOT "<snapshot_name>"
+LIST_SNAPSHOTS [WHERE conditions]
+DELETE_SNAPSHOT "<snapshot_name>"
+```
+
+**Examples**:
+```data
+# Create full database snapshot
+CREATE_SNAPSHOT "before_api_test_suite"
+
+# Create partial snapshot
+CREATE_SNAPSHOT "user_data_snapshot"  
+INCLUDE_COLLECTIONS ["users", "profiles", "settings"]
+METADATA:
+  - description = "Before user management tests"
+  - testSuite = "user_management"
+  - created = "{{$now}}"
+
+# Restore snapshot (complete rollback)
+RESTORE_SNAPSHOT "before_api_test_suite"
+
+# List snapshots
+LIST_SNAPSHOTS WHERE created >= "{{$pastDate:7d}}"
+```
+
+### Temporary Data Management
+
+**Purpose**: Mark data as temporary with automatic cleanup capabilities.
+
+**Temporary Data Markers**:
+- `_temp: true` - Mark as temporary data
+- `_ttl: <timestamp>` - Time-to-live (auto-expire)
+- `_testData: "<test_id>"` - Test suite identifier
+- `_cleanup: true` - Include in cleanup operations
+
+**Examples**:
+```data
+# Insert temporary test data
+INSERT users
+{
+  "_id": "temp_user_001",
+  "name": "Test User",
+  "_temp": true,                    # Temporary marker
+  "_ttl": "{{$futureDate:1h}}",    # Expires in 1 hour
+  "_testData": "api_test_001"       # Test identifier
+}
+
+# Bulk mark as temporary
+UPDATE users 
+WHERE _id STARTS_WITH "test_"
+SET:
+  - _temp = true
+  - _ttl = "{{$futureDate:30m}}"
+  - _testData = "user_registration_test"
+```
+
+### Cleanup Operations
+
+**Purpose**: Remove temporary test data and restore clean state.
+
+**Syntax**:
+```data
+CLEANUP_TEMP_DATA [WHERE conditions]
+CLEANUP_EXPIRED_DATA [WHERE conditions]  
+CLEANUP_COLLECTIONS [collection_list] WHERE conditions
+```
+
+**Examples**:
+```data
+# Clean up all temporary data
+CLEANUP_TEMP_DATA WHERE _temp = true
+
+# Clean up by test identifier
+CLEANUP_TEMP_DATA WHERE _testData = "api_test_001"
+
+# Clean up expired data
+CLEANUP_EXPIRED_DATA WHERE _ttl < "{{$now}}"
+
+# Clean up specific collections
+CLEANUP_COLLECTIONS ["users", "orders"] WHERE _temp = true
+
+# Pattern-based cleanup
+DELETE * WHERE _id MATCHES "^temp_.*"
+```
+
+### Error Handling with Automatic Rollback
+
+**Purpose**: Automatically rollback changes when errors occur.
+
+**Error Handling**:
+```data
+TRY:
+  @ROLLBACK_ON_ERROR = true
+  
+  INSERT users {"_id": "user_001", "email": "test@test.com"}
+  UPDATE users WHERE _id = "existing" SET status = "modified"
+  
+  # This error triggers automatic rollback
+  INSERT users {"_id": "user_001", "email": "duplicate@test.com"}  # Duplicate key
+  
+CATCH DuplicateKeyError:
+  # All changes in TRY block automatically rolled back
+  # Handle error with alternative approach
+  
+FINALLY:
+  # Ensure clean state
+  SHOW_CHANGES        # Should be empty due to rollback
+```
+
+### API Testing Workflow Pattern
+
+**Standard API Testing Pattern**:
+```data
+# 1. Enable change tracking
+@TRACK_CHANGES = true
+@ROLLBACK_ON_ERROR = true
+@CHANGE_TAG = "{{testName}}"
+
+# 2. Make tracked changes
+INSERT test_collection { "_id": "test_001", ... }
+UPDATE existing_collection WHERE _id = "existing_001" SET field = "new_value"
+
+# 3. Run API tests (external)
+# Your API testing framework executes here
+
+# 4. Precise rollback
+TRY:
+  ROLLBACK_CHANGES WHERE tag = "{{testName}}"
+CATCH:
+  # Fallback to snapshot restore if needed
+  RESTORE_SNAPSHOT "emergency_backup"
+
+# 5. Verify clean state
+VERIFY_ROLLBACK
+SHOW_CHANGES        # Should be empty
+```
+
+### Performance Considerations
+
+**Change Tracking Performance**:
+- Minimal overhead for INSERT operations (only track document ID)
+- Moderate overhead for UPDATE operations (backup original values)
+- Higher overhead for DELETE operations (backup entire document)
+- Use `@TRACK_CHANGES = false` for bulk operations when rollback not needed
+
+**Rollback Performance**:
+- Fast rollback for INSERT operations (simple DELETE)
+- Moderate rollback for UPDATE operations (restore original values)
+- Slower rollback for DELETE operations (re-insert entire document)
+- Use operation-specific rollback (`ROLLBACK_INSERTS`) when possible
+
+## System Variables
+
+### Overview
+
+System variables are predefined keywords that control the behavior of the DotData file execution. They are not user-defined variables but built-in system configuration options.
+
+### Collection ID Type Configuration
+
+#### @COLLECTION_ID_TYPE (Predefined)
+
+**Purpose**: Set the default `_id` field type for collections.
+
+**Syntax**:
+```data
+@COLLECTION_ID_TYPE collection_name = TypeName
+```
+
+**Supported Types**:
+- `ObjectId` - Standard MongoDB ObjectId
+- `UUID` - UUID format  
+- `String` - String type (default)
+- `Number` - Numeric type (with AUTO_INCREMENT support)
+
+**Examples**:
+```data
+@COLLECTION_ID_TYPE products = ObjectId
+@COLLECTION_ID_TYPE users = String
+@COLLECTION_ID_TYPE orders = UUID
+@COLLECTION_ID_TYPE categories = Number
+```
+
+**Behavior**: Once set, applies to all subsequent operations on that collection within the file.
+
+**Type Detection**: When no @COLLECTION_ID_TYPE is specified, the system uses smart type detection based on the `_id` value format.
+
+### Change Tracking System Variables
+
+#### @TRACK_CHANGES (Predefined)
+
+**Purpose**: Enable/disable automatic change tracking for rollback operations.
+
+**Syntax**:
+```data
+@TRACK_CHANGES = true|false
+```
+
+**Default**: `true`
+
+**Behavior**:
+- `true` - All INSERT, UPDATE, DELETE operations are tracked for rollback
+- `false` - Operations are not tracked (better performance for bulk operations)
+
+**Change Tracking Details**:
+- **INSERT**: Document ID tracked for deletion on rollback
+- **UPDATE**: Original field values backed up before modification
+- **DELETE**: Complete document backed up before deletion
+- **UPSERT**: Tracks whether result was insert or update for proper rollback
+
+**Examples**:
+```data
+# Default behavior - tracking enabled
+@TRACK_CHANGES = true
+INSERT users {"_id": "user_001", "name": "John"}     # Tracked
+UPDATE users WHERE _id = "user_002" SET name = "Jane"  # Original name backed up
+
+# Disable for bulk operations
+@TRACK_CHANGES = false
+INSERT_MANY bulk_users [...]                         # Not tracked
+
+# Re-enable tracking
+@TRACK_CHANGES = true
+INSERT orders {"_id": "order_001", "total": 99.99}   # Tracked again
+```
+
+#### @ROLLBACK_ON_ERROR (Predefined)
+
+**Purpose**: Automatically rollback tracked changes when errors occur.
+
+**Syntax**:
+```data
+@ROLLBACK_ON_ERROR = true|false
+```
+
+**Default**: `false`
+
+**Behavior**:
+- `true` - Any error triggers automatic rollback of all tracked changes in current execution context
+- `false` - Errors do not trigger automatic rollback (manual rollback required)
+
+**Error Context**: Applies to TRY/CATCH blocks and general execution.
+
+**Examples**:
+```data
+@ROLLBACK_ON_ERROR = true
+
+INSERT users {"_id": "user_001", "email": "test@test.com"}
+UPDATE users WHERE _id = "existing" SET status = "modified"
+
+# This duplicate key error will automatically rollback both operations above
+INSERT users {"_id": "user_001", "email": "duplicate@test.com"}
+
+# Result: user_001 deleted, existing user restored to original status
+```
+
+#### @CHANGE_TAG (Predefined)
+
+**Purpose**: Tag changes for selective rollback operations.
+
+**Syntax**:
+```data
+@CHANGE_TAG = "string"
+```
+
+**Default**: `null` (no tag)
+
+**Behavior**: All subsequent tracked changes are tagged with the specified string until changed.
+
+**Use Cases**:
+- Group changes by test suite
+- Separate setup vs. test operations
+- Enable partial rollback scenarios
+
+**Examples**:
+```data
+# Tag setup operations
+@CHANGE_TAG = "test_setup"
+INSERT users {"_id": "setup_user", "name": "Setup User"}
+INSERT roles {"_id": "admin_role", "name": "Administrator"}
+
+# Tag test operations
+@CHANGE_TAG = "api_test_001"
+UPDATE users WHERE _id = "setup_user" SET role = "admin_role"
+INSERT sessions {"_id": "test_session", "userId": "setup_user"}
+
+# Clear tag
+@CHANGE_TAG = null
+INSERT logs {"_id": "log_001", "message": "Test completed"}  # Untagged
+
+# Selective rollback
+ROLLBACK_CHANGES WHERE tag = "api_test_001"     # Only rollback test operations
+ROLLBACK_CHANGES WHERE tag = "test_setup"       # Then rollback setup
+```
+
+### System Variable Scope and Precedence
+
+**File Scope**: System variables apply from declaration point until end of DotData file or redeclaration.
+
+**Override Behavior**: Later declarations override earlier ones.
+
+**Context Isolation**: TRY/CATCH blocks can have isolated variable contexts.
+
+**Examples**:
+```data
+# Initial settings
+@TRACK_CHANGES = true
+@ROLLBACK_ON_ERROR = false
+@CHANGE_TAG = "phase_1"
+
+INSERT users {"_id": "user_001"}    # Tracked, tagged "phase_1"
+
+# Change settings
+@ROLLBACK_ON_ERROR = true
+@CHANGE_TAG = "phase_2"
+
+UPDATE users WHERE _id = "user_001" SET status = "active"  # Tracked, tagged "phase_2", auto-rollback enabled
+
+# Temporary disable tracking
+@TRACK_CHANGES = false
+INSERT_MANY bulk_data [...]         # Not tracked
+
+# Re-enable with new tag
+@TRACK_CHANGES = true
+@CHANGE_TAG = "cleanup_phase"
+DELETE temp_data WHERE temp = true  # Tracked, tagged "cleanup_phase"
+```
+
+### Built-in Functions Integration
+
+System variables work seamlessly with built-in functions:
+
+```data
+@CHANGE_TAG = "test_{{$timestamp}}"              # Dynamic tag with timestamp
+@TRACK_CHANGES = "{{trackingEnabled}}"           # Variable-based setting
+
+INSERT users {
+  "_id": "{{$randomUUID}}",
+  "createdAt": "{{$now}}",
+  "testTag": "{{@CHANGE_TAG}}"                   # Reference current change tag
+}
+```
+
+### Performance Considerations
+
+**Change Tracking Overhead**:
+- **INSERT**: Minimal (only stores document ID)
+- **UPDATE**: Moderate (backs up original field values)
+- **DELETE**: High (backs up entire document)
+
+**Optimization Strategies**:
+```data
+# Disable tracking for known bulk operations
+@TRACK_CHANGES = false
+INSERT_MANY large_dataset [...]
+
+# Use selective rollback instead of full tracking
+@TRACK_CHANGES = true
+@CHANGE_TAG = "critical_only"
+INSERT critical_data {...}          # Only track critical operations
+```
+
+### Error Handling with System Variables
+
+System variables integrate with error handling:
+
+```data
+TRY:
+  @ROLLBACK_ON_ERROR = true
+  @CHANGE_TAG = "transaction_001"
+  
+  INSERT users {...}
+  UPDATE orders {...}
+  DELETE temp_data {...}
+  
+CATCH DuplicateKeyError:
+  # Changes automatically rolled back due to @ROLLBACK_ON_ERROR = true
+  # Handle error recovery
+  
+CATCH ValidationError:
+  # Manual rollback if needed
+  ROLLBACK_CHANGES WHERE tag = "transaction_001"
+  
+FINALLY:
+  # Reset variables
+  @ROLLBACK_ON_ERROR = false
+  @CHANGE_TAG = null
+```
+
+## GridFS Operations

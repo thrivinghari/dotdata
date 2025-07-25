@@ -1,4 +1,4 @@
-# MongoDB .data File Format - Basic Operations Examples
+# DotData File Format - Basic Operations Examples
 
 # =============================================================================
 # Comments Section - Demonstrating comment syntax
@@ -688,3 +688,224 @@ DELETE logs WHERE Level = "INFO"
 DELETE events WHERE Name = "Future Event"
 DELETE test_data WHERE _id LIKE "test-%"
 DROP_COLLECTION test_users 
+
+=== API Testing: Granular Change Tracking & Rollback === // Precise rollback of specific changes
+
+### Complete API Test Workflow with Granular Rollback
+# Example: Testing user registration API with exact change tracking
+
+# 1. Enable automatic change tracking (default: true)
+@TRACK_CHANGES = true
+@ROLLBACK_ON_ERROR = true
+@CHANGE_TAG = "user_registration_test"
+
+# 2. Optional: Create snapshot for complete safety net
+CREATE_SNAPSHOT "before_user_registration_test"
+INCLUDE_COLLECTIONS ["users", "sessions", "audit_logs"]
+
+# 3. Insert new test users (tracked for deletion on rollback)
+INSERT users
+{
+  "_id": "test_user_001",
+  "email": "newuser@test.com", 
+  "username": "newuser123",
+  "status": "pending"
+}
+
+INSERT users
+{
+  "_id": "test_user_002",
+  "email": "existing@test.com",
+  "username": "existing123", 
+  "status": "active"
+}
+
+# 4. Update existing user (original values automatically backed up)
+UPDATE users
+WHERE _id = "real_existing_user_001"
+SET:
+  - email = "modified_for_test@test.com"
+  - status = "test_modified"
+  - lastModified = "{{$now}}"
+
+# 5. Insert test session data (tracked for deletion)
+INSERT sessions
+{
+  "_id": "test_session_001",
+  "userId": "test_user_002",
+  "token": "test_token_12345",
+  "expiresAt": "{{$futureDate:1h}}"
+}
+
+# 6. Delete a temporary user (full document backed up for restoration)  
+DELETE users WHERE _id = "temp_user_to_delete"
+
+# 7. Show all tracked changes
+SHOW_CHANGES
+
+# Expected output:
+# Operation 1: INSERT users {"_id": "test_user_001", ...} [Tag: user_registration_test]
+# Operation 2: INSERT users {"_id": "test_user_002", ...} [Tag: user_registration_test]  
+# Operation 3: UPDATE users {"_id": "real_existing_user_001"} - Original: {"email": "original@test.com", "status": "active", "lastModified": "2024-01-01"}
+# Operation 4: INSERT sessions {"_id": "test_session_001", ...} [Tag: user_registration_test]
+# Operation 5: DELETE users {"_id": "temp_user_to_delete"} - Backed up: {"_id": "temp_user_to_delete", "name": "Temp User", ...}
+
+# === API TESTS RUN HERE ===
+# Your API testing framework would execute the actual API calls here
+# Testing scenarios: duplicate email, invalid data, successful registration, etc.
+
+# 8. Precise Rollback - Restore EXACT original state
+
+# Option 1: Rollback ALL tracked changes (most common)
+ROLLBACK_CHANGES
+
+# This automatically executes:
+# - DELETE users WHERE _id = "test_user_001"                    (remove inserted)
+# - DELETE users WHERE _id = "test_user_002"                    (remove inserted)  
+# - UPDATE users WHERE _id = "real_existing_user_001" 
+#     SET email = "original@test.com", status = "active", lastModified = "2024-01-01"  (restore original)
+# - DELETE sessions WHERE _id = "test_session_001"              (remove inserted)
+# - INSERT users {"_id": "temp_user_to_delete", "name": "Temp User", ...}  (restore deleted)
+
+# Option 2: Selective rollback by operation type
+# ROLLBACK_INSERTS        # Only remove inserted documents
+# ROLLBACK_UPDATES        # Only restore updated documents to original values  
+# ROLLBACK_DELETES        # Only re-insert deleted documents
+
+# Option 3: Rollback specific documents
+# ROLLBACK_DOCUMENT users "_id" "test_user_001"                 # Remove specific inserted user
+# ROLLBACK_DOCUMENT users "_id" "real_existing_user_001"        # Restore specific updated user
+
+# Option 4: Rollback by operation index
+# ROLLBACK_OPERATION 1    # Rollback first operation (INSERT test_user_001)
+# ROLLBACK_OPERATION 3    # Rollback third operation (UPDATE real_existing_user_001)
+
+# 9. Verify precise cleanup completed
+VERIFY_ROLLBACK
+SHOW_CHANGES                        # Should show: "No tracked changes remaining"
+
+# 10. Verify specific expected state
+EXPECT_NOT_EXISTS users WHERE _id = "test_user_001"
+EXPECT_NOT_EXISTS users WHERE _id = "test_user_002"
+EXPECT_NOT_EXISTS sessions WHERE _id = "test_session_001"
+EXPECT_EXISTS users WHERE _id = "temp_user_to_delete"          # Should be restored
+FIND users WHERE _id = "real_existing_user_001"                # Should have original email
+
+### Quick Granular Rollback Examples
+
+# Track changes with custom tags
+@CHANGE_TAG = "product_api_test"
+INSERT products {"_id": "test_product_001", "name": "Test Product"}
+UPDATE products WHERE _id = "existing_product" SET price = 99.99
+
+# Rollback only tagged changes
+ROLLBACK_CHANGES WHERE tag = "product_api_test"
+
+# Show change history before rollback
+SHOW_CHANGES products
+SHOW_CHANGES products WHERE _id = "existing_product"
+
+# Verify rollback capability before proceeding
+VERIFY_ROLLBACK
+# Output: "All 2 tracked changes can be safely rolled back"
+
+# Export change history for audit
+EXPORT_CHANGES TO "api_test_changes_{{$timestamp}}.json"
+
+### Error Handling with Automatic Rollback
+
+# Automatic rollback on error
+TRY:
+  @ROLLBACK_ON_ERROR = true
+  @CHANGE_TAG = "error_test"
+  
+  INSERT users {"_id": "user_001", "email": "test1@test.com"}
+  INSERT users {"_id": "user_002", "email": "test2@test.com"}  
+  UPDATE users WHERE _id = "existing_user" SET status = "modified"
+  
+  # This will fail and trigger automatic rollback of all changes above
+  INSERT users {"_id": "user_001", "email": "duplicate@test.com"}  # Duplicate key error
+  
+CATCH DuplicateKeyError:
+  # All previous changes in TRY block automatically rolled back:
+  # - user_001 deleted
+  # - user_002 deleted  
+  # - existing_user restored to original status
+  
+  # Handle error with alternative approach
+  INSERT users {"_id": "user_001_alt", "email": "test1@test.com"}
+  
+FINALLY:
+  # Verify clean state
+  SHOW_CHANGES        # Should be empty due to automatic rollback
+
+### Traditional Collection-Level Backup (for complete safety)
+
+# Full collection backup before major test suite
+BACKUP users TO "users_backup_{{$timestamp}}"
+BACKUP orders TO "orders_backup_{{$timestamp}}"
+
+# Backup with conditions
+BACKUP products
+WHERE category = "test_products"
+TO "test_products_backup"
+
+# Backup multiple collections at once
+BACKUP_COLLECTIONS ["users", "orders", "products"] TO "full_api_test_backup"
+
+# Restore entire collections if needed
+RESTORE users FROM "users_backup_{{$timestamp}}"
+RESTORE_COLLECTIONS FROM "full_api_test_backup"
+
+### Advanced Change Tracking
+
+# Disable tracking for bulk operations  
+@TRACK_CHANGES = false
+INSERT_MANY bulk_data [...]           # Not tracked (for performance)
+@TRACK_CHANGES = true
+
+# Multiple tagged change groups
+@CHANGE_TAG = "setup_phase"
+INSERT users {"_id": "setup_user_001", ...}
+INSERT orders {"_id": "setup_order_001", ...}
+
+@CHANGE_TAG = "test_phase"  
+UPDATE users WHERE _id = "setup_user_001" SET status = "testing"
+INSERT sessions {"_id": "test_session", ...}
+
+# Rollback specific phase
+ROLLBACK_CHANGES WHERE tag = "test_phase"    # Only rollback test phase changes
+ROLLBACK_CHANGES WHERE tag = "setup_phase"   # Then rollback setup phase changes
+
+# Import/replay change history
+EXPORT_CHANGES TO "successful_test_changes.json"
+# Later...
+IMPORT_CHANGES FROM "successful_test_changes.json"
+REPLAY_CHANGES                        # Re-apply all imported changes
+
+### Best Practices Summary
+
+# 1. Always enable change tracking for API tests
+@TRACK_CHANGES = true
+@ROLLBACK_ON_ERROR = true
+
+# 2. Use descriptive change tags
+@CHANGE_TAG = "{{testSuiteName}}_{{timestamp}}"
+
+# 3. Verify rollback before making changes
+VERIFY_ROLLBACK
+
+# 4. Show changes before rollback for audit
+SHOW_CHANGES
+
+# 5. Always verify clean state after rollback
+TRY:
+  # Your test operations with change tracking
+  INSERT test_data {...}
+  UPDATE existing_data {...}
+  
+FINALLY:
+  # Always rollback and verify
+  ROLLBACK_CHANGES
+  SHOW_CHANGES                      # Should be empty
+  VERIFY_ROLLBACK                   # Should confirm no changes remain 

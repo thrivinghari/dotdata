@@ -12,7 +12,11 @@ element = collectionTypeHint
         | changeStreamOperation 
         | replicaSetOperation 
         | shardingOperation 
-        | mlOperation ;
+        | mlOperation 
+        | backupOperation
+        | restoreOperation
+        | snapshotOperation
+        | cleanupOperation ;
 
 (* Comments *)
 comment = hashComment | doubleSlashComment ;
@@ -24,9 +28,17 @@ inlineComment = ( hashComment | doubleSlashComment ) ;
 section = "===" whitespace sectionName whitespace "===" [ inlineComment ] newline ;
 sectionName = { letter | digit | whitespace | "_" | "-" } ;
 
-(* System Directives *)
-collectionTypeHint = "@COLLECTION_ID_TYPE" whitespace collectionName whitespace "=" whitespace idType [ inlineComment ] newline ;
+(* System Variables and Directives *)
+variable = userVariable | systemVariable ;
+userVariable = "@" identifier "=" value ;
+systemVariable = collectionTypeHint | changeTrackingVariable ;
+collectionTypeHint = "@COLLECTION_ID_TYPE" whitespace identifier "=" idType ;
 idType = "ObjectId" | "GUID" | "UUID" | "String" | "Number" ;
+changeTrackingVariable = trackChangesVariable | rollbackOnErrorVariable | changeTagVariable ;
+
+trackChangesVariable = "@TRACK_CHANGES" whitespace "=" whitespace boolean ;
+rollbackOnErrorVariable = "@ROLLBACK_ON_ERROR" whitespace "=" whitespace boolean ;
+changeTagVariable = "@CHANGE_TAG" whitespace "=" whitespace ( string | "null" ) ;
 
 (* Type Casting *)
 typeCastValue = typeCastFunction "(" value ")" ;
@@ -151,6 +163,58 @@ enableShardingOperation = "ENABLE_SHARDING" whitespace string ;
 shardCollectionOperation = "SHARD_COLLECTION" whitespace collectionName "KEY" jsonObject ;
 addShardOperation = "ADD_SHARD" whitespace string ;
 shardStatsOperation = "SHARD_STATS" [ collectionName ] ;
+
+(* Backup, Restore & Cleanup Operations *)
+backupOperation = backupCollection | backupMultipleCollections ;
+restoreOperation = restoreCollection | restoreMultipleCollections | restoreSnapshot ;
+snapshotOperation = createSnapshot | deleteSnapshot | listSnapshots ;
+cleanupOperation = cleanupTempData | cleanupExpiredData | cleanupCollections ;
+rollbackOperation = rollbackChanges | rollbackInserts | rollbackUpdates | rollbackDeletes | rollbackDocument | rollbackOperation ;
+changeTrackingOperation = showChanges | verifyRollback | exportChanges | importChanges | replayChanges ;
+
+(* Backup Operations *)
+backupCollection = "BACKUP" whitespace collectionName [ whereClause ] "TO" whitespace string [ backupOptions ] ;
+backupMultipleCollections = "BACKUP_COLLECTIONS" whitespace jsonArray "TO" whitespace string [ backupOptions ] ;
+backupOptions = "OPTIONS:" { backupOption } ;
+backupOption = "compression" "=" string | "encrypt" "=" boolean | "maxSize" "=" string | "retention" "=" string | "incremental" "FROM" string ;
+
+(* Restore Operations *)
+restoreCollection = "RESTORE" whitespace collectionName "FROM" whitespace string [ restoreMode ] [ restoreOptions ] ;
+restoreMultipleCollections = "RESTORE_COLLECTIONS" "FROM" whitespace string [ restoreMode ] ;
+createSnapshot = "CREATE_SNAPSHOT" whitespace string [ "INCLUDE_COLLECTIONS" jsonArray ] [ "METADATA:" { jsonProperty } ] ;
+restoreSnapshot = "RESTORE_SNAPSHOT" whitespace string ;
+restoreMode = "MODE" ( "replace" | "merge" | "skip" | "error" ) ;
+restoreOptions = "WHERE" condition | "FIELDS:" jsonArray | "ON_CONFLICT:" { conflictOption } | "TRANSFORM:" { transformRule } ;
+conflictOption = "strategy" "=" string | "preferBackup" "=" boolean ;
+transformRule = fieldPath "=" value ;
+
+(* Snapshot Operations *)  
+deleteSnapshot = "DELETE_SNAPSHOT" whitespace string ;
+listSnapshots = "LIST_SNAPSHOTS" [ whereClause ] ;
+
+(* Cleanup Operations *)
+cleanupTempData = "CLEANUP_TEMP_DATA" [ whereClause ] ;
+cleanupExpiredData = "CLEANUP_EXPIRED_DATA" [ whereClause ] ;
+cleanupCollections = "CLEANUP_COLLECTIONS" whitespace jsonArray "WHERE" condition ;
+
+(* Granular Rollback Operations *)
+rollbackChanges = "ROLLBACK_CHANGES" [ whereClause ] ;
+rollbackInserts = "ROLLBACK_INSERTS" [ whereClause ] ;
+rollbackUpdates = "ROLLBACK_UPDATES" [ whereClause ] ;
+rollbackDeletes = "ROLLBACK_DELETES" [ whereClause ] ;
+rollbackDocument = "ROLLBACK_DOCUMENT" whitespace collectionName whitespace string whitespace string ;
+rollbackOperation = "ROLLBACK_OPERATION" whitespace number ;
+
+(* Change Tracking Operations *)
+showChanges = "SHOW_CHANGES" [ collectionName ] [ whereClause ] ;
+verifyRollback = "VERIFY_ROLLBACK" [ whereClause ] ;
+exportChanges = "EXPORT_CHANGES" "TO" whitespace string ;
+importChanges = "IMPORT_CHANGES" "FROM" whitespace string ;
+replayChanges = "REPLAY_CHANGES" ;
+
+(* Supporting Types *)
+frequency = "daily" | "weekly" | "monthly" | "hourly" ;
+time = string ; (* HH:MM format *)
 
 (* Machine Learning Operations *)
 mlOperation = trainModelOperation | predictOperation | evaluateModelOperation ;

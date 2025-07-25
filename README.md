@@ -1,8 +1,340 @@
-# .data File Format - Complete Documentation
+# DotData File Format - Complete Documentation
+
+## What is DotData?
+
+**DotData** is a human-readable, database-focused, **declarative** domain-specific language (DSL) designed for **database operations and test data management**. Think of it as the database equivalent of `.http` files for API testing - but instead of HTTP requests, DotData handles database operations with natural, declarative syntax.
+
+**Declarative means you describe WHAT you want, not HOW to do it** - just like SQL queries where you specify the desired outcome rather than writing procedural code.
+
+### **Database Support Overview**
+
+**DotData** can work with multiple database types, but with different levels of coverage:
+
+- **🍃 MongoDB **: **Complete coverage** - CRUD, aggregation, indexing, transactions, GridFS, sharding, replica sets, change streams, and all advanced features
+- **🗄️ RDBMS (PostgreSQL, MySQL, SQL Server, etc.)**: **CRUD operations only** - INSERT, UPDATE, DELETE, SELECT (basic data manipulation commands)
+
+**This documentation fully covers the MongoDB-specialized syntax**, which provides 100% feature coverage for MongoDB operations.
+
+### **Why MongoDB Gets Full Coverage**
+
+MongoDB's document-based nature aligns perfectly with DotData's human-readable syntax:
+
+```data
+# MongoDB (Declarative document syntax)
+INSERT users
+{
+  "_id": "user_001",
+  "profile": {
+    "name": "John Doe",
+    "preferences": ["email", "sms"]
+  }
+}
+# ↑ Declares WHAT document to insert, not HOW to insert it
+
+# vs. RDBMS CRUD (Table-focused)
+INSERT INTO users (id, name, email) 
+VALUES ('user_001', 'John Doe', 'john@example.com')
+# ↑ Also declarative - describes the desired result
+```
+
+Unlike traditional MongoDB scripts or JSON-based operations, this MongoDB-specialized DotData provides:
+- **Declarative syntax** that focuses on intent, not implementation
+- **Human-readable commands** that resemble natural language statements
+- **Built-in variable support** with dynamic value generation
+- **Automatic change tracking** for precise rollback capabilities  
+- **Flexible formatting** that adapts to simple or complex operations
+- **Complete MongoDB coverage** from basic CRUD to advanced enterprise features
+
+## Why Use DotData?
+
+### **🎯 Primary Use Case: Manual API Testing Data Preparation**
+
+**Important Clarification**: DotData is **not an API testing tool** - it's a **test data preparation tool** for manual API testing workflows. Here's how it fits into your testing process:
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   1. DotData    │ ──▶│  2. Manual API   │ ──▶│  3. DotData     │
+│  Prepare Data   │    │     Testing      │    │   Cleanup       │
+│                 │    │                  │    │                 │
+│ • Insert users  │    │ • Use .http files│    │ • Rollback      │
+│ • Create orders │    │ • Test endpoints │    │ • Restore state │
+│ • Setup sessions│    │ • Verify results │    │ • Remove temp   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+
+DotData Role: Data Setup ────────────────────────▶ Data Cleanup
+Manual Testing: ────────────── API Testing ──────────────
+```
+
+**DotData handles the "Before" and "After" - you handle the "During" with your API testing tools.**
+
+### **🚀 Key Advantages Over Traditional Approaches**
+
+#### **vs. MongoDB Shell Scripts**
+```javascript
+// Traditional MongoDB (complex, error-prone)
+use roadwarrior;
+db.users.insertOne({
+  "_id": "user_" + Math.random().toString(36).substr(2, 9),
+  "name": "Test User",
+  "email": "test" + Date.now() + "@example.com",
+  "created": new Date(),
+  "orgId": "org_12345"
+});
+```
+
+```data
+// DotData MongoDB (declarative, clean, readable)
+INSERT users
+{
+  "_id": "{{$randomGUID}}",
+  "name": "Test User", 
+  "email": "test{{$timestamp}}@example.com",
+  "created": "{{$now}}",
+  "orgId": "{{orgId}}"
+}
+// ↑ Declares WHAT user to create, system handles HOW
+```
+
+#### **vs. SQL CRUD Scripts**
+```sql
+-- Traditional SQL (verbose, static)
+INSERT INTO test_users (id, name, email, created_at, org_id) 
+VALUES ('user_' || SUBSTR(MD5(RANDOM()::text), 1, 8), 
+        'Test User', 
+        'test' || EXTRACT(EPOCH FROM NOW()) || '@example.com',
+        NOW(), 
+        'org_12345');
+```
+
+```data
+// DotData SQL (declarative, cleaner, with variables)
+INSERT users
+{
+  "id": "{{$randomGUID}}",
+  "name": "Test User", 
+  "email": "test{{$timestamp}}@example.com",
+  "created_at": "{{$now}}",
+  "org_id": "{{orgId}}"
+}
+// ↑ Declares WHAT record to insert, not HOW to execute it
+```
+
+#### **vs. Code-Based Seeders**
+- **Declarative vs. Imperative** - Describe WHAT you want, not HOW to implement it
+- **No compilation needed** - Execute directly from your editor
+- **No programming knowledge required** - Natural language, declarative syntax
+- **Version control friendly** - Plain text files with clear diffs
+- **Editor agnostic** - Works in VS Code, IntelliJ, Vim, or any text editor
+- **Immediate execution** - No build/deploy cycle
+
+#### **vs. Database GUI Tools**
+- **Declarative scripts** - Describe intended state rather than manual clicks
+- **Reproducible** - Scripts can be shared and version controlled
+- **Batch operations** - Handle hundreds of records with simple, declarative syntax
+- **Variable support** - Dynamic data generation with built-in functions
+- **Change tracking** - Automatic rollback capabilities
+- **Documentation** - Self-documenting with inline comments
+
+### **🎨 Perfect for These Scenarios**
+
+#### **1. API Development & Testing**
+```data
+=== Setup Test Environment ===
+# Create test organization and users for API testing
+INSERT organizations { "_id": "test_org_001", "name": "API Test Corp" }
+INSERT_MANY users [
+  { "_id": "api_user_001", "orgId": "test_org_001", "role": "admin" },
+  { "_id": "api_user_002", "orgId": "test_org_001", "role": "user" }
+]
+
+# Then use .http files to test your APIs with this data
+# Finally, rollback all changes when done
+```
+
+#### **2. Database Migration Testing**
+```data
+# Test data migration scenarios
+CREATE_COLLECTION new_user_profiles
+SCHEMA:
+  * _id: String [PK,REQUIRED]
+  * userId: String [REQUIRED,FK:users._id]
+  * preferences: Object [OPTIONAL]
+
+# Migrate existing data
+FIND users WHERE profile EXISTS
+INSERT new_user_profiles { "_id": "{{_id}}_profile", "userId": "{{_id}}", "preferences": "{{profile}}" }
+```
+
+#### **3. Performance Testing Data Setup**
+```data
+# Generate realistic load testing data
+LOAD_TEST large_dataset
+COUNT 100000
+TEMPLATE:
+  - _id = "item_{{$index}}"
+  - name = "Item {{$index}}"
+  - price = RANDOM_FLOAT(10.0, 1000.0)
+  - category = RANDOM_CHOICE("electronics", "books", "clothing")
+  - created = RANDOM_DATE("2020-01-01", "{{$now}}")
+```
+
+#### **4. Complex Data Relationships**
+```data
+# Setup complex test scenarios with relationships
+@accountId = "{{$randomGUID}}"
+@userId = "{{$randomGUID}}"
+
+INSERT accounts { "_id": "{{accountId}}", "name": "Test Account" }
+INSERT users { "_id": "{{userId}}", "accountId": "{{accountId}}", "role": "admin" }
+INSERT orders { "_id": "{{$randomGUID}}", "userId": "{{userId}}", "total": 99.99 }
+INSERT sessions { "_id": "{{$randomGUID}}", "userId": "{{userId}}", "expires": "{{$futureDate:24h}}" }
+```
+
+### **🛠️ Integration with Development Workflow**
+
+#### **With Version Control**
+```bash
+# Your project structure
+project/
+├── src/                    # Application code
+├── tests/
+│   ├── api-tests/         # .http files for API testing
+│   └── data-setup/        # .data files for test data
+│       ├── user-management.data
+│       ├── order-processing.data
+│       └── cleanup.data
+└── README.md
+```
+
+#### **With CI/CD Pipelines**
+```yaml
+# Example CI pipeline
+test-preparation:
+  - name: Setup test database
+    run: dotdata-cli execute tests/data-setup/baseline.data
+    
+api-testing:
+  - name: Run API tests
+    run: |
+      # Your API testing framework here
+      newman run api-tests/user-management.postman.json
+      
+cleanup:
+  - name: Cleanup test data
+    run: dotdata-cli execute tests/data-setup/cleanup.data
+```
+
+### **🎯 Who Should Use DotData?**
+
+#### **Perfect For:**
+
+**MongoDB Users** (Full Coverage):
+- **Backend Developers** - Testing APIs during development
+- **QA Engineers** - Setting up test data for manual testing scenarios
+- **DevOps Engineers** - Database operations and migrations
+- **Data Engineers** - ETL testing and data pipeline validation
+- **Product Managers** - Creating demo data for presentations
+
+**RDBMS Users** (CRUD Operations):
+- **Backend Developers** - Basic data manipulation for testing
+- **QA Engineers** - Setting up test data in SQL databases
+- **Data Engineers** - ETL testing with SQL databases
+
+#### **Ideal When You Need:**
+- **Declarative database operations** that focus on intent, not implementation
+- **Readable data specifications** that non-programmers can understand
+- **Reproducible test scenarios** that can be shared across teams
+- **Quick data setup/teardown** for API testing workflows
+- **Version-controlled data scripts** alongside your application code
+- **Precise change tracking** to ensure clean test environments
+
+### **🚫 When NOT to Use DotData**
+
+DotData is **not intended for:**
+- **Production data operations** - Use proper deployment pipelines
+- **Automated API testing** - Use tools like Postman, Newman, or Jest
+- **Real-time data processing** - Use application code or stream processors
+- **Complex business logic** - Use your application's business layer
+- **High-frequency operations** - Use optimized application code
+- **RDBMS schema operations** - DotData RDBMS support is CRUD-only (no CREATE TABLE/ALTER TABLE/INDEX management for SQL databases)
+
+### **🌟 The DotData Philosophy**
+
+**"Database operations should be as readable and shareable as HTTP requests"**
+
+**"Declare WHAT you want, not HOW to implement it"**
+
+Just as `.http` files revolutionized API development by making HTTP requests shareable and executable, **DotData does the same for database operations**. It bridges the gap between:
+
+- **Database complexity** and **human readability**
+- **Imperative coding** and **declarative specifications**
+- **Technical implementation** and **business intent**
+- **Development needs** and **testing requirements**
+- **Individual scripts** and **team-wide reproducibility**
+
+### **🎯 Declarative Design Principles**
+
+**DotData follows declarative design principles:**
+
+1. **Intent over Implementation** - Describe WHAT you want, not HOW to do it
+2. **Natural Language Flow** - Commands read like human instructions
+3. **Outcome-Focused** - Specify the desired end state
+4. **System Handles Execution** - Let the system determine the optimal approach
+5. **Readable by Domain Experts** - Non-programmers can understand the intent
+
+**Example: Declarative vs. Imperative**
+
+```javascript
+// Imperative (procedural code - HOW to do it)
+const users = db.collection('users');
+const filter = { orgId: orgId, userType: 1, isActive: true };
+const cursor = users.find(filter);
+const results = [];
+while (await cursor.hasNext()) {
+  const user = await cursor.next();
+  if (!user.isDeleted) {
+    results.push({
+      _id: user._id,
+      name: user.name,
+      email: user.email
+    });
+  }
+}
+```
+
+```data
+// Declarative DotData (WHAT you want)
+FIND users
+WHERE:
+  - orgId = "{{orgId}}"
+  - userType = 1
+  - isActive = true
+  - isDeleted = false
+SELECT:
+  - _id
+  - name  
+  - email
+```
+
+The declarative approach focuses on **business intent** rather than **technical implementation**.
+
+### **📋 Implementation Coverage Summary**
+
+| Database Type | Coverage Level | Supported Operations |
+|---------------|----------------|---------------------|
+| **MongoDB** | **Complete (100%)** | CRUD, Aggregation, Indexing, Transactions, GridFS, Change Streams, Sharding, Replica Sets, Machine Learning, Statistics, Performance Tuning |
+| **PostgreSQL** | **CRUD Only** | INSERT, UPDATE, DELETE, SELECT (basic data manipulation) |
+| **MySQL** | **CRUD Only** | INSERT, UPDATE, DELETE, SELECT (basic data manipulation) |
+| **SQL Server** | **CRUD Only** | INSERT, UPDATE, DELETE, SELECT (basic data manipulation) |
+| **Oracle** | **CRUD Only** | INSERT, UPDATE, DELETE, SELECT (basic data manipulation) |
+
+**This documentation focuses on the MongoDB implementation** with complete feature coverage.
 
 ## 🎯 **Key Features**
 
+- **Declarative Syntax**: Focus on WHAT you want, not HOW to implement it
 - **Complete MongoDB Coverage**: 100% support for all MongoDB operations and features
+- **Intent-Driven Commands**: Natural language-like statements that express business logic
 - **DBSoup-Inspired Schema Syntax**: Readable, structured schema definitions with field prefixes
 - **Flexible Syntax**: Both single-line and multi-line formats for optimal readability
 - **Advanced Analytics**: Statistical functions, time-series analysis, and forecasting
@@ -501,7 +833,7 @@ INSERT user_profiles
 
 ## System Directives
 
-The `.data` format includes special **system directives** that configure behavior. These are predefined keywords, not user variables.
+**DotData** includes special **system directives** that configure behavior. These are predefined keywords, not user variables.
 
 ### @COLLECTION_ID_TYPE (Predefined Directive)
 
@@ -531,6 +863,112 @@ INSERT categories { "_id": "42", "name": "Electronics" }                  # → 
 ```
 
 **Scope**: Once set, the directive applies to ALL subsequent operations on that collection within the file.
+
+### Change Tracking System Variables (Predefined)
+
+**Purpose**: Control automatic change tracking and rollback behavior for API testing.
+
+#### @TRACK_CHANGES (Predefined Variable)
+
+**Syntax**: `@TRACK_CHANGES = true|false`
+
+**Default**: `true`
+
+**Purpose**: Enable or disable automatic tracking of INSERT, UPDATE, and DELETE operations for precise rollback.
+
+**Examples**:
+```data
+# Enable change tracking (default behavior)
+@TRACK_CHANGES = true
+INSERT users {"_id": "test_user", "name": "Test"}    # Tracked for rollback
+UPDATE users WHERE _id = "user_001" SET status = "active"  # Original values backed up
+
+# Disable tracking for bulk operations (performance)
+@TRACK_CHANGES = false
+INSERT_MANY bulk_data [...]                          # Not tracked
+@TRACK_CHANGES = true                                # Re-enable tracking
+```
+
+#### @ROLLBACK_ON_ERROR (Predefined Variable)
+
+**Syntax**: `@ROLLBACK_ON_ERROR = true|false`
+
+**Default**: `false`
+
+**Purpose**: Automatically rollback all tracked changes when an error occurs during execution.
+
+**Examples**:
+```data
+@ROLLBACK_ON_ERROR = true
+INSERT users {"_id": "user_001", "email": "test@test.com"}
+UPDATE users WHERE _id = "existing" SET status = "modified"
+
+# This error will trigger automatic rollback of both operations above
+INSERT users {"_id": "user_001", "email": "duplicate@test.com"}  # Duplicate key error
+
+# After error: user_001 deleted, existing user restored to original status
+```
+
+#### @CHANGE_TAG (Predefined Variable)
+
+**Syntax**: `@CHANGE_TAG = "string"`
+
+**Default**: `null` (no tag)
+
+**Purpose**: Tag changes for selective rollback by test suite or operation group.
+
+**Examples**:
+```data
+# Tag changes for selective rollback
+@CHANGE_TAG = "user_registration_test"
+INSERT users {"_id": "test_user_001", "name": "Test User 1"}
+INSERT users {"_id": "test_user_002", "name": "Test User 2"}
+
+@CHANGE_TAG = "order_processing_test"
+INSERT orders {"_id": "test_order_001", "total": 99.99}
+UPDATE users WHERE _id = "test_user_001" SET lastOrderId = "test_order_001"
+
+# Rollback only user registration changes
+ROLLBACK_CHANGES WHERE tag = "user_registration_test"
+
+# Rollback only order processing changes  
+ROLLBACK_CHANGES WHERE tag = "order_processing_test"
+```
+
+### System Variable Scope
+
+**File-level scope**: System variables apply to the entire DotData file from the point they are declared.
+
+**Multiple declarations**: Later declarations override earlier ones.
+
+**Reset behavior**: You can change system variables multiple times within the same DotData file.
+
+**Examples**:
+```data
+# Set initial behavior
+@TRACK_CHANGES = true
+@ROLLBACK_ON_ERROR = false
+@CHANGE_TAG = "setup_phase"
+
+# Operations use above settings
+INSERT users {...}
+INSERT orders {...}
+
+# Change settings mid-file
+@ROLLBACK_ON_ERROR = true
+@CHANGE_TAG = "testing_phase"
+
+# New operations use updated settings
+UPDATE users WHERE _id = "user_001" SET status = "testing"
+INSERT sessions {...}
+
+# Disable tracking for bulk operations
+@TRACK_CHANGES = false
+INSERT_MANY large_dataset [...]
+
+# Re-enable tracking
+@TRACK_CHANGES = true
+```
 
 ## User Variables
 
@@ -1408,7 +1846,7 @@ CATCH:
 ## Complete Example
 
 ```data
-### Complete .data File with Advanced Features
+### Complete DotData File with Advanced Features
 MONGO localhost:27017/advanced_ecommerce
 
 ### Variables
@@ -2108,3 +2546,380 @@ INSERT comprehensive_example
 ```
 
 This **content-based approach** is much more flexible and doesn't rely on naming conventions! 🎯
+
+## Backup, Restore & Temporary Data Management
+
+For API testing scenarios where you need to insert/update temporary test data and restore the **exact original state** afterward.
+
+### **Automatic Change Tracking**
+
+**Every change is automatically tracked for precise rollback:**
+
+```data
+# Enable automatic change tracking (default: true)
+@TRACK_CHANGES = true
+
+# Insert new document - automatically tracked for deletion on rollback
+INSERT users
+{
+  "_id": "new_user_001",
+  "name": "Test User",
+  "email": "test@example.com"
+}
+
+# Update existing document - original values automatically backed up
+UPDATE users
+WHERE _id = "existing_user_001"
+SET:
+  - email = "newemail@test.com"
+  - status = "modified"
+
+# Delete existing document - full document automatically backed up for restore
+DELETE users WHERE _id = "temp_user_999"
+```
+
+### **Granular Restore Operations**
+
+**Restore specific changes made by current DotData file:**
+
+```data
+# Rollback ALL changes made by this DotData file execution
+ROLLBACK_CHANGES
+
+# Rollback specific operations by type
+ROLLBACK_INSERTS                    # Delete all documents inserted by this file
+ROLLBACK_UPDATES                    # Restore original values for all updated documents
+ROLLBACK_DELETES                    # Re-insert all documents deleted by this file
+
+# Rollback specific documents
+ROLLBACK_DOCUMENT users "_id" "new_user_001"         # Remove inserted user
+ROLLBACK_DOCUMENT users "_id" "existing_user_001"    # Restore original values
+
+# Rollback by operation index (in order of execution)
+ROLLBACK_OPERATION 1                # Rollback first operation in this file
+ROLLBACK_OPERATION 3                # Rollback third operation in this file
+```
+
+### **Change History & Verification**
+
+**View and verify tracked changes:**
+
+```data
+# Show all tracked changes for this DotData file execution
+SHOW_CHANGES
+
+# Show changes for specific collection
+SHOW_CHANGES users
+
+# Show changes for specific document
+SHOW_CHANGES users WHERE _id = "existing_user_001"
+
+# Verify changes can be rolled back
+VERIFY_ROLLBACK                     # Check if all changes can be safely rolled back
+```
+
+### **Backup Operations for Collection-Level Safety**
+
+**Traditional backup for collection-level restore:**
+
+```data
+# Backup entire collections before major changes
+BACKUP users TO "users_backup_001"
+BACKUP orders TO "orders_backup_001"
+
+# Backup specific documents based on query
+BACKUP users 
+WHERE _id IN ["user_001", "user_002", "admin_user"]
+TO "backup_specific_users"
+
+# Backup with conditions  
+BACKUP products
+WHERE category = "electronics" AND inStock = true
+TO "backup_electronics_products"
+
+# Backup multiple collections in one operation
+BACKUP_COLLECTIONS ["users", "orders", "products"] TO "api_test_backup_001"
+```
+
+### **Collection-Level Restore Operations**
+
+**Restore previously backed up collections:**
+
+```data
+# Restore entire collections (replaces current data)
+RESTORE users FROM "users_backup_001"
+RESTORE orders FROM "orders_backup_001"
+
+# Restore with merge (keeps existing data, adds backed up data)
+RESTORE users FROM "backup_specific_users" MODE merge
+
+# Restore specific fields only
+RESTORE users FROM "users_backup_001"
+WHERE _id IN ["user_001", "user_002"] 
+FIELDS: ["email", "profile", "settings"]
+```
+
+### **Snapshot Operations for Complete State**
+
+**Point-in-time snapshots for complex testing:**
+
+```data
+# Create named snapshot of current database state
+CREATE_SNAPSHOT "before_api_test_001"
+INCLUDE_COLLECTIONS ["users", "orders", "products", "sessions"]
+
+# Create snapshot with metadata
+CREATE_SNAPSHOT "user_management_test_baseline"
+INCLUDE_COLLECTIONS ["users", "roles", "permissions"]  
+METADATA:
+  - description = "Baseline before user management API tests"
+  - testSuite = "user_management"
+  - created = "{{$now}}"
+
+# Restore from snapshot (rollback to exact state)
+RESTORE_SNAPSHOT "before_api_test_001"
+
+# List available snapshots
+LIST_SNAPSHOTS
+WHERE created >= "{{$pastDate:7d}}"
+```
+
+### **Temporary Data Markers**
+
+**Mark data as temporary for automatic cleanup:**
+
+```data
+# Insert temporary test data with TTL (time-to-live)
+INSERT users
+{
+  "_id": "temp_user_001",
+  "name": "Test User",
+  "email": "test@example.com",
+  "_temp": true,                           # Mark as temporary
+  "_ttl": "{{$futureDate:1h}}"            # Auto-expire in 1 hour
+}
+
+# Insert temporary data with test marker
+INSERT_MANY orders [
+  {
+    "_id": "temp_order_001", 
+    "customerId": "temp_user_001",
+    "total": 99.99,
+    "_testData": "api_test_001"            # Tag with test identifier
+  },
+  {
+    "_id": "temp_order_002",
+    "customerId": "temp_user_001", 
+    "total": 149.50,
+    "_testData": "api_test_001"            # Same test identifier
+  }
+]
+
+# Bulk mark existing data as temporary
+UPDATE users
+WHERE _id STARTS_WITH "temp_"
+SET:
+  - _temp = true
+  - _ttl = "{{$futureDate:2h}}"
+```
+
+### **Cleanup Operations**
+
+**Clean up temporary test data:**
+
+```data
+# Clean up by temporary marker
+CLEANUP_TEMP_DATA
+WHERE _temp = true
+
+# Clean up by test identifier
+DELETE orders WHERE _testData = "api_test_001"
+DELETE users WHERE _testData = "api_test_001"
+
+# Clean up expired data
+CLEANUP_EXPIRED_DATA
+WHERE _ttl < "{{$now}}"
+
+# Clean up with pattern matching
+DELETE * WHERE _id MATCHES "^temp_.*"
+
+# Clean up temporary data from multiple collections
+CLEANUP_COLLECTIONS ["users", "orders", "products"]
+WHERE _temp = true OR _testData IS NOT NULL
+```
+
+### **Complete API Testing Workflow**
+
+**Example: Testing user registration API with precise rollback:**
+
+```data
+=== API Test Setup === // Enable change tracking and prepare
+
+# 1. Enable automatic change tracking
+@TRACK_CHANGES = true
+
+# 2. Optional: Create snapshot for complete safety
+CREATE_SNAPSHOT "before_user_registration_test"
+INCLUDE_COLLECTIONS ["users", "sessions", "audit_logs"]
+
+=== Test Data Setup === // Make tracked changes
+
+# 3. Insert new test users (will be tracked for deletion)
+INSERT users
+{
+  "_id": "test_user_001",
+  "email": "newuser@test.com",
+  "username": "newuser123",
+  "status": "pending"
+}
+
+INSERT users
+{
+  "_id": "test_user_002", 
+  "email": "existing@test.com",
+  "username": "existing123",
+  "status": "active"
+}
+
+# 4. Update existing user for conflict testing (original values backed up)
+UPDATE users
+WHERE _id = "existing_user_real"
+SET:
+  - email = "modified@test.com"
+  - lastModified = "{{$now}}"
+
+# 5. Insert test session (will be tracked)
+INSERT sessions
+{
+  "_id": "test_session_001",
+  "userId": "test_user_002",
+  "token": "test_token_12345"
+}
+
+=== Verify Test Data ===
+
+# 6. Show all changes made so far
+SHOW_CHANGES
+
+# Expected output:
+# Operation 1: INSERT users {"_id": "test_user_001", ...}
+# Operation 2: INSERT users {"_id": "test_user_002", ...}  
+# Operation 3: UPDATE users {"_id": "existing_user_real"} - Original: {"email": "old@test.com", "lastModified": "2024-01-01"}
+# Operation 4: INSERT sessions {"_id": "test_session_001", ...}
+
+=== API Testing === // Run your API tests here
+# Your API tests would run here using the test data above
+# Test cases: duplicate email, invalid data, successful registration, etc.
+
+=== Precise Cleanup & Restore === // Restore exact original state
+
+# Option 1: Rollback ALL specific changes made by this DotData file
+ROLLBACK_CHANGES
+
+# This will:
+# - DELETE users WHERE _id = "test_user_001" (remove inserted)
+# - DELETE users WHERE _id = "test_user_002" (remove inserted)  
+# - UPDATE users WHERE _id = "existing_user_real" SET email = "old@test.com", lastModified = "2024-01-01" (restore original)
+# - DELETE sessions WHERE _id = "test_session_001" (remove inserted)
+
+# Option 2: Selective rollback
+# ROLLBACK_INSERTS                    # Only remove inserted documents
+# ROLLBACK_UPDATES                    # Only restore updated documents
+# ROLLBACK_DOCUMENT users "_id" "test_user_001"  # Remove specific inserted user
+
+# Option 3: Fallback to snapshot restore (if needed)
+# RESTORE_SNAPSHOT "before_user_registration_test"
+
+=== Verify Cleanup ===
+
+# 7. Verify exact original state restored
+VERIFY_ROLLBACK
+SHOW_CHANGES                        # Should show: "No tracked changes remaining"
+
+# 8. Optional: Verify specific documents
+EXPECT_NOT_EXISTS users WHERE _id = "test_user_001"
+EXPECT_NOT_EXISTS users WHERE _id = "test_user_002"
+FIND users WHERE _id = "existing_user_real"      # Should have original email
+```
+
+### **Advanced Change Tracking Features**
+
+**Fine-grained control over change tracking:**
+
+```data
+# Disable change tracking for bulk operations
+@TRACK_CHANGES = false
+INSERT_MANY bulk_data [...]           # Not tracked
+@TRACK_CHANGES = true
+
+# Track changes with custom tags
+@CHANGE_TAG = "user_management_test"
+INSERT users {...}                    # Tagged change
+UPDATE users WHERE _id = "user_001" SET name = "New Name"  # Tagged change
+
+# Rollback by tag
+ROLLBACK_CHANGES WHERE tag = "user_management_test"
+
+# Save change history to file
+EXPORT_CHANGES TO "user_test_changes.json"
+
+# Load and replay changes
+IMPORT_CHANGES FROM "user_test_changes.json"
+REPLAY_CHANGES                        # Re-apply all imported changes
+```
+
+### **Error Handling with Automatic Rollback**
+
+**Automatic rollback on errors:**
+
+```data
+TRY:
+  # Enable automatic rollback on error
+  @ROLLBACK_ON_ERROR = true
+  
+  INSERT users {"_id": "user_001", "email": "test1@test.com"}
+  INSERT users {"_id": "user_002", "email": "test2@test.com"}  
+  UPDATE users WHERE _id = "existing" SET status = "modified"
+  
+  # This might fail and trigger automatic rollback
+  INSERT users {"_id": "user_001", "email": "duplicate@test.com"}  # Duplicate key error
+  
+CATCH DuplicateKeyError:
+  # Changes automatically rolled back due to @ROLLBACK_ON_ERROR = true
+  # All previous INSERTs and UPDATEs in this TRY block are reversed
+  
+  # Handle the error and try alternative approach
+  INSERT users {"_id": "user_001_alt", "email": "test1@test.com"}
+```
+
+### **Best Practices for API Testing**
+
+```data
+# 1. Always enable change tracking for API tests
+@TRACK_CHANGES = true
+@ROLLBACK_ON_ERROR = true
+
+# 2. Use clear test data identifiers
+@CHANGE_TAG = "{{testSuiteName}}"
+
+# 3. Verify rollback capability before making changes
+VERIFY_ROLLBACK
+
+# 4. Always verify cleanup completed
+TRY:
+  # Your test operations
+  INSERT users {...}
+  UPDATE users {...}
+  
+  # Run your API tests here
+  
+FINALLY:
+  # Always rollback specific changes
+  ROLLBACK_CHANGES
+  
+  # Verify clean state
+  SHOW_CHANGES                      # Should be empty
+  EXPECT_NOT_EXISTS users WHERE _id STARTS_WITH "test_"
+```
+
+**DotData** provides **precise, granular restore** capabilities - exactly what you need for API testing! 🎯✨
