@@ -1,0 +1,1182 @@
+### Advanced MongoDB Operations Example - Complete Advanced Features Coverage
+MONGO localhost:27017/roadwarrior
+
+=== Variables === // Advanced test data identifiers
+@accountId = "{{$randomGUID}}"
+@orgId = "{{$randomGUID}}"
+@userId = "{{$randomGUID}}"
+@adminUserId = "{{$randomGUID}}"
+@sessionToken = "session-{{$randomObjectId}}"
+@productId = "{{$randomObjectId}}"
+@orderId = "{{$randomObjectId}}"
+@customerId = "{{$randomGUID}}"
+@transactionId = "{{$randomObjectId}}"
+
+=== Performance Profiling Setup === // Enable monitoring
+### Enable profiling for performance analysis
+PROFILE
+LEVEL: 2
+SLOW_MS: 100
+OPERATIONS: ["find", "update", "aggregate"]
+
+=== Advanced Type Casting === // Complex type handling scenarios
+
+### Mixed ID Types with Natural Inference
+@COLLECTION_ID_TYPE products = ObjectId
+@COLLECTION_ID_TYPE categories = Number
+
+INSERT products
+{
+  "_id": "507f1f77bcf86cd799439020",  # String auto-converted to ObjectId (directive)
+  "name": "Advanced Widget",          # String (natural)
+  "price": 299.99,                   # Number (natural)
+  "categoryId": 42,                  # Number (natural - matches categories collection)
+  "inStock": true,                   # Boolean (natural)
+  "tags": ["electronics", "premium"], # Array<String> (natural)
+  "metadata": {                      # Object (natural)
+    "createdBy": "admin_user_123",   # String (natural)
+    "parentProduct": ObjectId("507f1f77bcf86cd799439019")  # Explicit ObjectId
+  }
+}
+
+### Complex Aggregation with Minimal Casting
+AGGREGATE orders
+PIPELINE:
+  - MATCH:
+      - _id IN [
+          ObjectId("507f1f77bcf86cd799439020"),  # Explicit ObjectId
+          ObjectId("507f1f77bcf86cd799439021"),  # Explicit ObjectId
+          ObjectId("507f1f77bcf86cd799439022")   # Explicit ObjectId
+        ]
+      - customerId = "premium_customer_456"      # String (natural)
+      - total > 100                             # Number (natural)
+  - LOOKUP:
+      - from = "customers"                      # String (natural)
+      - localField = "customerId"               # String (natural)
+      - foreignField = "_id"                    # String (natural)
+      - as = "customerInfo"                     # String (natural)
+  - UNWIND customerInfo
+  - GROUP BY customerInfo.segment:
+      - totalOrders = COUNT(*)
+      - avgOrderValue = AVG(total)
+      - orderIds = PUSH(_id)                    # Natural _id values
+
+### Bulk Operations with Natural Types
+INSERT_MANY order_items
+[
+  {
+    "_id": UUID("550e8400-e29b-41d4-a716-446655440000"),  # Explicit UUID
+    "orderId": ObjectId("507f1f77bcf86cd799439020"),       # Explicit ObjectId
+    "productId": ObjectId("507f1f77bcf86cd799439021"),     # Explicit ObjectId
+    "quantity": 2,                                        # Number (natural)
+    "unitPrice": 49.99,                                   # Number (natural)
+    "totalPrice": 99.98,                                  # Number (natural)
+    "timestamp": Date("2024-01-15T10:30:00Z")             # Explicit Date
+  },
+  {
+    "_id": UUID("550e8400-e29b-41d4-a716-446655440001"),  # Explicit UUID
+    "orderId": ObjectId("507f1f77bcf86cd799439020"),       # Explicit ObjectId
+    "productId": ObjectId("507f1f77bcf86cd799439022"),     # Explicit ObjectId
+    "quantity": 1,                                        # Number (natural)
+    "unitPrice": 149.99,                                  # Number (natural)
+    "totalPrice": 149.99,                                 # Number (natural)
+    "timestamp": Date("2024-01-15T11:00:00Z")             # Explicit Date
+  }
+]
+
+### Update Operations with Natural Types
+UPDATE product_reviews
+WHERE:
+  - productId = ObjectId("507f1f77bcf86cd799439020")  # Explicit ObjectId
+  - rating > 4                                       # Number (natural)
+  - verified = false                                 # Boolean (natural)
+  - createdAt >= Date("2024-01-01T00:00:00Z")        # Explicit Date
+SET:
+  - verified = true                                  # Boolean (natural)
+  - verifiedBy = "moderator_xyz789"                  # String (natural)
+  - verificationDate = Date("{{$now}}")              # Explicit Date (current time)
+  - helpfulVotes = 0                                # Number (natural)
+
+### Conditional Operations with Type Casting
+IF_EXISTS products WHERE _id = ObjectId("507f1f77bcf86cd799439020")
+THEN:
+  UPDATE products
+  WHERE _id = ObjectId("507f1f77bcf86cd799439020")
+  SET:
+    - lastUpdated = Date("{{$now}}")
+    - updatedBy = String("system_admin")
+ELSE:
+  INSERT products
+  {
+    "_id": ObjectId("507f1f77bcf86cd799439020"),
+    "name": "New Product",
+    "createdAt": Date("{{$now}}"),
+    "createdBy": String("system_admin")
+  }
+
+### Array Operations with Type Casting
+UPDATE user_favorites
+WHERE _id = String("user_collector_999")
+SET:
+  - ADD_UNIQUE(favoriteProducts, ObjectId("507f1f77bcf86cd799439020"))
+  - ADD_UNIQUE(favoriteCategories, Number(42))
+  - ADD_UNIQUE(tags, String("wishlist_item"))
+
+### Foreign Key References with Type Casting
+@COLLECTION_ID_TYPE orders = UUID
+@COLLECTION_ID_TYPE customers = String
+@COLLECTION_ID_TYPE products = ObjectId
+
+INSERT orders
+{
+  "_id": "550e8400-e29b-41d4-a716-446655440005",  # UUID (collection hint)
+  "customerId": String("premium_customer_789"),   # String reference
+  "items": [
+    {
+      "productId": ObjectId("507f1f77bcf86cd799439020"),  # ObjectId reference
+      "quantity": Number(2),
+      "unitPrice": Number("99.99")
+    },
+    {
+      "productId": ObjectId("507f1f77bcf86cd799439021"),  # ObjectId reference
+      "quantity": Number(1),
+      "unitPrice": Number("149.99")
+    }
+  ]
+}
+
+### Transaction with Mixed Types (Mostly Natural)
+BEGIN_TRANSACTION
+
+# Deduct from inventory (ObjectId products collection)
+UPDATE products
+WHERE _id = ObjectId("507f1f77bcf86cd799439020")  # Explicit ObjectId
+SET:
+  - inventory -= 2                                # Number (natural)
+  - lastSold = Date("{{$now}}")                   # Explicit Date
+
+# Create order (UUID orders collection)  
+INSERT orders
+{
+  "_id": UUID("550e8400-e29b-41d4-a716-446655440010"),  # Explicit UUID
+  "customerId": "customer_vip_456",                      # String (natural)
+  "productId": ObjectId("507f1f77bcf86cd799439020"),     # Explicit ObjectId  
+  "quantity": 2,                                        # Number (natural)
+  "unitPrice": 299.99,                                  # Number (natural)
+  "total": 599.98,                                      # Number (natural)
+  "status": "pending",                                  # String (natural)
+  "orderDate": Date("{{$now}}")                         # Explicit Date
+}
+
+# Update customer stats (String customers collection)
+UPDATE customers  
+WHERE _id = "customer_vip_456"  # String (natural)
+SET:
+  - totalOrders += 1            # Number (natural)
+  - totalSpent += 599.98        # Number (natural) 
+  - lastOrderDate = Date("{{$now}}")  # Explicit Date
+  - vipStatus = true            # Boolean (natural)
+
+COMMIT_TRANSACTION
+
+=== Schema and Index Setup === // Database structure
+
+### Advanced Schema Creation with Complex Validation
+CREATE_COLLECTION financial_transactions
+SCHEMA:
+  * _id             : String                  [PK,REQUIRED]
+  * transactionId   : String                  [REQUIRED,UNIQUE,PATTERN:^TXN-\d{12}$]
+  * fromAccountId   : String                  [REQUIRED,FK:accounts._id]
+  * toAccountId     : String                  [REQUIRED,FK:accounts._id]
+  * amount          : Number                  [REQUIRED,MIN:0.01,MAX:1000000]
+  * currency        : String                  [REQUIRED,ENUM:USD,EUR,GBP,CAD,DEFAULT:USD]
+  * type            : String                  [REQUIRED,ENUM:transfer,payment,refund,fee]
+  * status          : String                  [REQUIRED,ENUM:pending,processing,completed,failed,cancelled]
+  @ encryptedData   : Object                  [ENCRYPTED,REQUIRED]
+  ~ maskedAccountNo : String                  [MASK:****-****-****-####,REQUIRED]
+  > shardKey        : String                  [PARTITION:hash,REQUIRED]
+  $ auditTrail      : Array<Object>           [AUDIT:full,SYSTEM]
+  ! indexedRef      : String                  [IX:compound,REQUIRED]
+  - metadata        : Object                  [OPTIONAL]
+  - description     : String                  [MAXLENGTH:200]
+  * createdAt       : Date                    [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+  - updatedAt       : Date                    [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+  - processedAt     : Date                    [OPTIONAL]
+
+### Schema with Embedded Entity Structure
+CREATE_COLLECTION ecommerce_orders
+SCHEMA:
+  * _id           : String                    [PK,REQUIRED]
+  * orderNumber   : String                    [REQUIRED,UNIQUE,PATTERN:^ORD-\d{8}-\d{4}$]
+  * customerId    : String                    [REQUIRED,FK:customers._id]
+  * status        : String                    [REQUIRED,ENUM:draft,pending,confirmed,shipped,delivered,cancelled]
+  * items         : Array<OrderItem>          [REQUIRED,MIN_ITEMS:1,MAX_ITEMS:100]
+  * addresses     : Object<OrderAddresses>    [REQUIRED]
+  * payment       : Object<PaymentInfo>       [REQUIRED]
+  * totals        : Object<OrderTotals>       [REQUIRED]
+  - couponCodes   : Array<String>             [OPTIONAL,MAX_ITEMS:5]
+  - specialInstr  : String                    [MAXLENGTH:500]
+  ! customerEmail : String                    [IX:text,FORMAT:email,REQUIRED]
+  $ orderEvents   : Array<Object>             [AUDIT:events,SYSTEM]
+  * createdAt     : Date                      [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+  - updatedAt     : Date                      [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+  - completedAt   : Date                      [OPTIONAL]
+
+# Define embedded entity schemas separately for clarity
+DEFINE_EMBEDDED_TYPE OrderItem
+SCHEMA:
+  * productId     : String                    [REQUIRED,FK:products._id]
+  * sku           : String                    [REQUIRED,PATTERN:^[A-Z0-9]{6,12}$]
+  * quantity      : Number                    [REQUIRED,MIN:1,MAX:999]
+  * unitPrice     : Number                    [REQUIRED,MIN:0]
+  * totalPrice    : Number                    [COMPUTED:quantity*unitPrice]
+  - customization : Object                    [OPTIONAL]
+
+DEFINE_EMBEDDED_TYPE OrderAddresses  
+SCHEMA:
+  * billing       : Object<Address>           [REQUIRED]
+  - shipping      : Object<Address>           [OPTIONAL]
+
+DEFINE_EMBEDDED_TYPE Address
+SCHEMA:
+  * street        : String                    [REQUIRED,MAXLENGTH:100]
+  * city          : String                    [REQUIRED,MAXLENGTH:50]
+  * state         : String                    [REQUIRED,MAXLENGTH:50]
+  * zipCode       : String                    [REQUIRED,PATTERN:^\d{5}(-\d{4})?$]
+  * country       : String                    [REQUIRED,ENUM:US,CA,MX,DEFAULT:US]
+
+### Raw JSON Schema for Complex Cases
+CREATE_COLLECTION analytics_events
+SCHEMA_JSON: {
+  "type": "object",
+  "properties": {
+    "_id": { "type": "string" },
+    "eventType": { "type": "string", "enum": ["click", "view", "purchase"] },
+    "userId": { "type": "string" },
+    "sessionId": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "properties": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "userAgent": { "type": "string" },
+        "ip": { "type": "string", "format": "ipv4" },
+        "referrer": { "type": "string" },
+        "utm": {
+          "type": "object",
+          "properties": {
+            "source": { "type": "string" },
+            "medium": { "type": "string" },
+            "campaign": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "required": ["_id", "eventType", "userId", "timestamp"]
+}
+
+### TTL Index for automatic session cleanup
+CREATE_INDEX ON user_sessions
+FIELDS:
+  - expires ASC TTL
+OPTIONS:
+  - Name = "session_ttl_idx"
+  - ExpireAfterSeconds = 3600
+
+### Partial Index for active users only
+CREATE_INDEX ON users
+FIELDS:
+  - email ASC UNIQUE
+OPTIONS:
+  - Name = "active_user_email_idx"
+  - PartialFilter:
+      - isActive = true
+      - isDeleted = false
+
+### Create Compound Index for Performance
+CREATE_INDEX ON users
+FIELDS:
+  - accountId ASC
+  - userType ASC
+  - email ASC
+OPTIONS:
+  - Name = "account_user_email_idx"
+  - Background = true
+
+### Create Text Index for Search
+CREATE_INDEX ON users
+FIELDS:
+  - name TEXT
+  - email TEXT
+  - profile.bio TEXT
+OPTIONS:
+  - Name = "user_text_search_idx"
+  - Language = "english"
+
+### Simple Geospatial Index
+CREATE_INDEX ON locations FIELDS coordinates GEO_2DSPHERE
+
+=== Complex Mathematical Operations === // Advanced queries
+
+### Date Math Examples
+FIND orders
+WHERE:
+  - created >= "{{$pastDate:30d}}"
+  - YEAR(created) = 2024
+  - MONTH(created) IN [1, 2, 3]
+  - DAY_OF_WEEK(created) NOT IN [1, 7]  # Exclude weekends
+  - HOUR(created) BETWEEN 9 AND 17     # Business hours only
+SELECT:
+  - customerId
+  - amount
+  - YEAR(created) AS orderYear
+  - MONTH(created) AS orderMonth
+  - DAY(created) AS orderDay
+SORT:
+  - created DESC
+LIMIT 100
+
+### Mathematical Expression Queries
+FIND products
+WHERE:
+  - price MOD 10 = 0                    # Prices ending in 0
+  - ABS(rating - 4.0) < 0.5            # Ratings close to 4.0
+  - SQRT(reviewCount) > 10              # Popular products
+  - POWER(discountRate, 2) < 0.04       # Low discount rates
+
+### String Mathematical Operations
+FIND users
+WHERE:
+  - STRLEN(name) > 5
+  - SUBSTR(email, 0, 5) = "admin"
+  - UPPER(status) = "ACTIVE"
+  - LOWER(email) CONTAINS "@gmail.com"
+
+### Array Mathematical Operations
+FIND orders
+WHERE:
+  - SIZE(items) > 2
+  - AVG(items.price) > 50
+  - SUM(items.quantity) < 10
+  - MAX(items.rating) >= 4
+
+=== Performance Analysis === // Query optimization
+
+### Simple Query Explanation
+EXPLAIN FIND users WHERE email = "test@example.com"
+
+### Complex Query Analysis with Performance Expectations
+EXPLAIN
+OPERATION:
+  FIND products
+  WHERE:
+    - category = "electronics"
+    - price BETWEEN 100 AND 500
+    - inStock = true
+    - rating >= 4.0
+  SELECT:
+    - name
+    - price
+    - rating
+  USE_INDEX "category_price_idx"
+  COMMENT "Product search optimization test"
+  MAX_TIME_MS 5000
+OPTIONS:
+  - Mode = "executionStats"
+  - Verbose = true
+EXPECT executionTimeMillis < 50
+
+### Profile Specific Operations
+PROFILE OPERATION:
+  AGGREGATE orders
+  PIPELINE:
+    - MATCH status = "completed"
+    - GROUP BY customerId:
+        - totalSpent = SUM(amount)
+        - orderCount = COUNT(*)
+        - avgOrderValue = AVG(amount)
+  EXPECT avgTimeMs < 200
+
+### Index Performance Analysis
+INDEX_STATS ON users
+
+=== Complex Transaction Operations === // Multi-document ACID
+
+### Multi-Collection Transaction with Mathematical Operations
+BEGIN_TRANSACTION
+
+# Create account first
+INSERT accounts
+{
+  "_id": "{{accountId}}",
+  "name": "Advanced Test Account",
+  "email": "advanced@test.com",
+  "created": "{{$now}}",
+  "userCount": 0,
+  "isActive": true
+}
+
+# Create admin user with complex profile
+INSERT users
+{
+  "_id": "{{adminUserId}}",
+  "accountId": "{{accountId}}",
+  "email": "admin@advanced.com",
+  "name": "Advanced Admin",
+  "userType": 0,
+  "profile": {
+    "age": 35,
+    "preferences": ["notifications", "darkMode"],
+    "bio": "System administrator for advanced testing"
+  },
+  "permissions": ["admin.read", "admin.write", "admin.delete"],
+  "created": "{{$now}}",
+  "lastLogin": null,
+  "loginCount": 0
+}
+
+# Create order with mathematical calculations
+INSERT orders
+{
+  "_id": "{{orderId}}",
+  "customerId": "{{customerId}}",
+  "baseAmount": "{{$randomFloat:50.0:500.0}}",
+  "discountRate": 0.1,
+  "taxRate": 0.08,
+  "subtotal": 0,
+  "tax": 0,
+  "total": 0,
+  "created": "{{$now}}"
+}
+
+# Calculate order totals using mathematical expressions
+UPDATE orders
+WHERE _id = "{{orderId}}"
+SET:
+  - subtotal = MULTIPLY(baseAmount, SUBTRACT(1, discountRate))
+  - tax = MULTIPLY(subtotal, taxRate)
+  - total = ADD(subtotal, tax)
+
+# Simple update within transaction
+UPDATE accounts WHERE _id = "{{accountId}}" SET userCount += 1
+
+# Create audit log entry
+INSERT audit_logs
+{
+  "_id": "audit-{{$randomUUID}}",
+  "action": "account_created",
+  "accountId": "{{accountId}}",
+  "userId": "{{adminUserId}}",
+  "timestamp": "{{$now}}",
+  "metadata": {
+    "calculatedTotal": "{{$randomFloat:100.0:600.0}}"
+  }
+}
+
+COMMIT_TRANSACTION
+
+=== Hybrid Raw MongoDB Syntax === // Complex native operations
+
+### Complex Query with Raw MongoDB Elements
+FIND orders
+WHERE:
+  - status = "completed"
+  - created >= "{{$pastDate:30d}}"
+  - RAW: { 
+      "items": { 
+        "$elemMatch": { 
+          "price": { "$gt": 100 }, 
+          "category": "electronics",
+          "rating": { "$gte": 4.0 }
+        } 
+      } 
+    }
+  - total > 200
+SELECT:
+  - customerId
+  - total
+  - items
+SORT created DESC
+
+### Update with Raw Array Operations
+UPDATE products
+WHERE _id = "{{productId}}"
+SET:
+  - lastUpdated = "{{$now}}"
+  - viewCount += 1
+  - RAW: { 
+      "$push": { 
+        "viewHistory": { 
+          "$each": [{ 
+            "timestamp": "{{$now}}", 
+            "user": "{{userId}}",
+            "source": "advanced_test"
+          }],
+          "$slice": -100 
+        }
+      }
+    }
+
+=== Advanced Aggregation Pipelines === // Complex data analysis
+
+### Hybrid Aggregation with Raw MongoDB and Mathematical Operations
+AGGREGATE orders
+PIPELINE:
+  - MATCH created >= "{{$pastDate:90d}}"
+  - ADD_FIELDS:
+      - profit = SUBTRACT(total, MULTIPLY(baseAmount, 0.7))
+      - quarter = CEIL(DIVIDE(MONTH(created), 3))
+      - isHighValue = COND(GT(total, 500), true, false)
+  - RAW: { 
+      "$lookup": {
+        "from": "customers",
+        "let": { "customerId": "$customerId" },
+        "pipeline": [
+          { "$match": { "$expr": { "$eq": ["$_id", "$$customerId"] } } },
+          { "$project": { "tier": "$profile.tier", "joinDate": "$profile.joinDate" } }
+        ],
+        "as": "customer"
+      }
+    }
+  - UNWIND customer
+  - GROUP BY:
+      - quarter = quarter
+      - tier = customer.tier
+    AGGREGATE:
+      - totalOrders = COUNT(*)
+      - totalRevenue = SUM(total)
+      - avgOrderValue = AVG(total)
+      - totalProfit = SUM(profit)
+      - profitMargin = DIVIDE(totalProfit, totalRevenue)
+  - MATCH totalRevenue > 1000
+  - SORT:
+      - quarter ASC
+      - totalProfit DESC
+OPTIONS:
+  - AllowDiskUse = true
+  - MaxTimeMS = 10000
+  - Comment = "Advanced quarterly analysis"
+
+### Time-Series Aggregation with Complex Date Math
+AGGREGATE analytics_events
+PIPELINE:
+  - MATCH:
+      - timestamp >= "{{$pastDate:7d}}"
+      - eventType = "user_interaction"
+  - ADD_FIELDS:
+      - hour = HOUR(timestamp)
+      - dayOfWeek = DAY_OF_WEEK(timestamp)
+      - isBusinessHour = AND(GTE(hour, 9), LTE(hour, 17))
+      - isWeekday = NOT(IN(dayOfWeek, [1, 7]))
+  - GROUP BY:
+      - date = DATE_TO_STRING(timestamp, "%Y-%m-%d")
+      - isBusinessHour = isBusinessHour
+    AGGREGATE:
+      - eventCount = COUNT(*)
+      - uniqueUsers = COUNT_DISTINCT(userId)
+      - avgDuration = AVG(duration)
+  - SORT:
+      - date DESC
+      - eventCount DESC
+
+=== Conditional Logic with Mathematical Expressions === // Control flow
+
+### Complex Conditional with Mathematical Threshold
+IF COUNT orders WHERE customerId = "{{customerId}}" AND total > MULTIPLY(200, 1.5) > 5
+THEN:
+  UPDATE customers
+  WHERE _id = "{{customerId}}"
+  SET:
+    - tier = "premium"
+    - upgraded = "{{$now}}"
+    - bonusPoints = MULTIPLY(totalSpent, 0.1)
+ELSE:
+  UPDATE customers
+  WHERE _id = "{{customerId}}"
+  SET:
+    - lastAnalyzed = "{{$now}}"
+    - recommendedSpend = SUBTRACT(1000, totalSpent)
+
+=== Advanced Array and Nested Operations === // Complex updates
+
+### Complex Array Updates with Mathematical Calculations
+UPDATE users
+WHERE _id = "{{adminUserId}}"
+SET:
+  - lastLogin = "{{$now}}"
+  - loginCount += 1
+  - RAW: {
+      "$push": {
+        "activityLog": {
+          "$each": [{
+            "action": "advanced_test_login",
+            "timestamp": "{{$now}}",
+            "score": 95.5,
+            "metadata": {
+              "testType": "mathematical_operations",
+              "duration": "{{$randomInt:30:300}}"
+            }
+          }],
+          "$sort": { "timestamp": -1 },
+          "$slice": -50
+        }
+      }
+    }
+
+### Nested Document Updates with Calculations
+UPDATE users
+WHERE:
+  - _id = "{{adminUserId}}"
+  - profile.preferences EXISTS
+SET:
+  - profile.stats.loginCount += 1
+  - profile.stats.avgSessionDuration = DIVIDE(
+      ADD(
+        MULTIPLY(profile.stats.avgSessionDuration, profile.stats.sessionCount),
+        "{{$randomInt:15:120}}"
+      ),
+      ADD(profile.stats.sessionCount, 1)
+    )
+  - profile.lastUpdated = "{{$now}}"
+
+=== Advanced Error Handling === // Exception management
+
+### Try-Catch with Specific Error Types
+TRY:
+  UPDATE inventory
+  WHERE:
+    - productId = "{{productId}}"
+    - stock >= 1
+  SET stock -= 1
+  
+  INSERT orders
+  {
+    "_id": "{{$randomUUID}}",
+    "productId": "{{productId}}",
+    "quantity": 1,
+    "total": "{{$randomFloat:50.0:200.0}}"
+  }
+CATCH ValidationError:
+  INSERT error_log
+  {
+    "_id": "{{$randomUUID}}",
+    "type": "validation_error",
+    "message": "Order validation failed",
+    "productId": "{{productId}}",
+    "timestamp": "{{$now}}"
+  }
+CATCH DuplicateKeyError:
+  UPDATE error_stats
+  WHERE type = "duplicate_orders"
+  SET count += 1
+CATCH:
+  INSERT error_log
+  {
+    "_id": "{{$randomUUID}}",
+    "type": "unknown_error",
+    "context": "order_creation",
+    "timestamp": "{{$now}}"
+  }
+
+=== Advanced Performance Testing === // Load and benchmark
+
+### Complex Load Test with Mathematical Templates
+LOAD_TEST realistic_orders
+COUNT 1000
+TEMPLATE:
+  - _id = UUID("{{$randomUUID}}")           # Explicit UUID function
+  - customerId = "customer_{{$index}}"      # String (natural)
+  - total = "{{$randomFloat:10.0:500.0}}"   # Number (natural via function)
+  - items = "{{$randomInt:1:5}}"           # Number (natural via function)
+  - status = "{{$randomChoice:pending,processing,shipped}}"  # String (natural)
+  - orderDate = Date("{{$randomDate:2024-01-01:2024-12-31}}")  # Explicit Date
+  - priority = "{{$randomInt:1:5}}"        # Number (natural via function)
+  - express = "{{$randomBool}}"            # Boolean (natural via function)
+
+### Complex Benchmark with Mathematical Aggregation
+BENCHMARK OPERATION:
+  AGGREGATE performance_transactions
+  PIPELINE:
+    - MATCH:
+        - created >= "{{$pastDate:30d}}"
+        - total > 50
+    - ADD_FIELDS:
+        - profit = MULTIPLY(subtotal, 0.15)
+        - quarter = CEIL(DIVIDE(MONTH(created), 3))
+    - GROUP BY:
+        - quarter = quarter
+        - currency = currency
+      AGGREGATE:
+        - totalVolume = SUM(total)
+        - totalProfit = SUM(profit)
+        - avgTransactionSize = AVG(total)
+        - profitMargin = DIVIDE(totalProfit, totalVolume)
+        - transactionCount = COUNT(*)
+    - MATCH totalVolume > 1000
+    - SORT totalProfit DESC
+    - LIMIT 20
+ITERATIONS 25
+EXPECT avgTimeMs < 400
+
+=== Advanced Schema Validation === // Data integrity
+
+### Complex Schema with Mathematical Constraints
+CREATE_COLLECTION financial_transactions
+WITH_SCHEMA:
+  Required Fields:
+    - _id (String)
+    - amount (Number, Range: 0.01-1000000)
+    - currency (String)
+    - timestamp (Date)
+  Optional Fields:
+    - fees (Object):
+        - processingFee (Number, Range: 0-100)
+        - exchangeFee (Number, Range: 0-50)
+        - totalFees (Number, Range: 0-150)
+    - metadata (Object):
+        - source (String, MaxLength: 50)
+        - riskScore (Number, Range: 0-100)
+
+### Test Complex Schema Violations
+INSERT financial_transactions
+{
+  "_id": "invalid-transaction",
+  "amount": -50,  # Violates range constraint
+  "currency": "",  # Empty string
+  "fees": {
+    "processingFee": 150,  # Exceeds maximum
+    "totalFees": 200       # Exceeds maximum
+  }
+}
+EXPECT_ERROR "Document failed validation"
+
+=== Query Optimization with Hints === // Performance tuning
+
+### Optimized Query with Index Hints
+FIND orders
+WHERE:
+  - customerId = "{{customerId}}"
+  - status IN ["processing", "shipped"]
+  - created >= "{{$pastDate:30d}}"
+  - total > 100
+USE_INDEX "customer_order_lookup_idx"
+COMMENT "Optimized customer order lookup"
+MAX_TIME_MS 1000
+SELECT:
+  - orderId
+  - status
+  - total
+  - created
+SORT:
+  - created DESC
+LIMIT 50
+
+=== Cleanup Operations === // Remove all test data
+
+# Remove performance test data with mathematical conditions
+DELETE performance_transactions
+WHERE:
+  - metadata.source = "performance_test"
+  - YEAR(created) = 2024
+  - total < 1000
+
+# Remove expired sessions automatically handled by TTL index
+# Clean up test data in reverse dependency order
+DELETE error_log WHERE timestamp < "{{$pastDate:1d}}"
+DELETE audit_logs WHERE accountId = "{{accountId}}"
+DELETE orders WHERE customerId = "{{customerId}}"
+DELETE user_sessions WHERE userId = "{{adminUserId}}"
+DELETE users WHERE accountId = "{{accountId}}"
+DELETE accounts WHERE _id = "{{accountId}}"
+
+# Disable profiling
+PROFILE LEVEL: 0
+
+# Drop test indexes
+DROP_INDEX ON users NAME "user_text_search_idx"
+DROP_INDEX ON users NAME "account_user_email_idx" 
+DROP_INDEX ON users NAME "active_user_email_idx"
+DROP_INDEX ON user_sessions NAME "session_ttl_idx" 
+
+=== GridFS Operations === // File storage and retrieval
+
+### Store File in GridFS
+GRIDFS_PUT document_files
+FILE: "/uploads/contract.pdf"
+METADATA: { "category": "legal", "uploadedBy": "{{adminUserId}}", "confidential": true }
+FILENAME: "contract-{{$randomUUID}}.pdf"
+CHUNK_SIZE: 261120
+
+### Store Base64 Data
+GRIDFS_PUT_DATA image_files
+DATA: "{{base64ImageData}}"
+METADATA: { "type": "profile_image", "userId": "{{userId}}", "size": 1024000 }
+FILENAME: "profile-{{userId}}-{{$timestamp}}.png"
+
+### Retrieve File by ID
+GRIDFS_GET document_files WHERE _id = "{{fileId}}" SAVE_TO: "/downloads/contract.pdf"
+
+### Find Files with Metadata Query
+GRIDFS_FIND document_files
+WHERE:
+  - metadata.category = "legal"
+  - metadata.confidential = true
+  - uploadDate >= "{{$pastDate:30d}}"
+SELECT:
+  - filename
+  - uploadDate
+  - length
+  - metadata.uploadedBy
+
+### Update File Metadata
+GRIDFS_UPDATE_METADATA document_files
+WHERE _id = "{{fileId}}"
+SET:
+  - metadata.lastAccessed = "{{$now}}"
+  - metadata.downloadCount += 1
+
+### Delete File
+GRIDFS_DELETE document_files WHERE filename LIKE "temp-%"
+
+=== Change Streams === // Real-time data monitoring
+
+### Watch Collection Changes
+WATCH orders
+PIPELINE:
+  - MATCH:
+      - operationType IN ["insert", "update"]
+      - fullDocument.total > 1000
+      - fullDocument.status = "pending"
+RESUME_TOKEN: "{{resumeToken}}"
+MAX_AWAIT_TIME: 5000
+ON_CHANGE:
+  INSERT high_value_alerts
+  {
+    "_id": "{{$randomUUID}}",
+    "operationType": "{{change.operationType}}",
+    "orderId": "{{change.documentKey._id}}",
+    "orderTotal": "{{change.fullDocument.total}}",
+    "timestamp": "{{$now}}"
+  }
+
+### Watch Database-wide Changes
+WATCH_DATABASE
+FILTER:
+  - operationType = "insert"
+  - ns.coll IN ["users", "orders", "products"]
+  - fullDocument.isImportant = true
+ON_CHANGE:
+  UPDATE real_time_metrics
+  WHERE type = "database_activity"
+  SET:
+    - eventCount += 1
+    - lastEventTime = "{{$now}}"
+    - eventsByCollection.{{change.ns.coll}} += 1
+
+### Get Resume Token for Stream Recovery
+GET_RESUME_TOKEN orders SAVE_AS: "resumeToken"
+
+=== Advanced Geospatial Operations === // Complex spatial queries
+
+### Find Locations Within Polygon
+FIND restaurants
+WHERE:
+  - cuisine = "italian"
+  - isActive = true
+  - location GEO_WITHIN {
+      "type": "Polygon",
+      "coordinates": [[[
+        [-74.0060, 40.7128], [-74.0060, 40.7200],
+        [-73.9950, 40.7200], [-73.9950, 40.7128],
+        [-74.0060, 40.7128]
+      ]]]
+    }
+SELECT:
+  - name
+  - location
+  - cuisine
+  - rating
+
+### Geospatial Intersection Query
+FIND delivery_zones
+WHERE:
+  - isActive = true
+  - boundary GEO_INTERSECTS {
+      "type": "LineString",
+      "coordinates": [[-74.0060, 40.7128], [-73.9950, 40.7200]]
+    }
+
+### Near Query with Distance Calculation
+FIND stores
+WHERE:
+  - category = "pharmacy"
+  - location GEO_NEAR {
+      "point": [-74.0060, 40.7128],
+      "maxDistance": 2000,
+      "minDistance": 100
+    }
+SELECT:
+  - name
+  - address
+  - location
+  - GEO_DISTANCE(location, [-74.0060, 40.7128]) AS distanceMeters
+SORT distanceMeters ASC
+LIMIT 10
+
+### Geospatial Area and Centroid Calculations
+FIND properties
+WHERE:
+  - type = "commercial"
+  - boundary EXISTS
+  - GEO_AREA(boundary) > 5000
+SELECT:
+  - address
+  - type
+  - GEO_AREA(boundary) AS areaSquareMeters
+  - GEO_CENTROID(boundary) AS centerPoint
+SORT areaSquareMeters DESC
+
+=== Advanced Statistical Analysis === // Statistical functions
+
+### Comprehensive Statistical Aggregation
+AGGREGATE sales_performance
+PIPELINE:
+  - MATCH:
+      - date >= "{{$pastDate:90d}}"
+      - amount > 0
+  - GROUP BY productCategory:
+      - count = COUNT(*)
+      - mean = AVG(amount)
+      - median = MEDIAN(amount)
+      - mode = MODE(amount)
+      - stdDev = STD_DEV(amount)
+      - variance = VARIANCE(amount)
+      - percentile25 = PERCENTILE(amount, 25)
+      - percentile75 = PERCENTILE(amount, 75)
+      - percentile90 = PERCENTILE(amount, 90)
+      - skewness = SKEWNESS(amount)
+      - kurtosis = KURTOSIS(amount)
+      - coefficientOfVariation = DIVIDE(stdDev, mean)
+  - MATCH count > 50
+  - SORT mean DESC
+
+### Correlation and Regression Analysis
+AGGREGATE customer_analytics
+PIPELINE:
+  - MATCH:
+      - isActive = true
+      - totalOrders > 5
+  - GROUP BY customerSegment:
+      - correlation_orders_spend = CORRELATION(totalOrders, totalSpent)
+      - covariance_orders_spend = COVARIANCE(totalOrders, totalSpent)
+      - regression_slope = LINEAR_REGRESSION(totalOrders, totalSpent)
+      - customerCount = COUNT(*)
+  - ADD_FIELDS:
+      - correlationStrength = COND(
+          GT(ABS(correlation_orders_spend), 0.7),
+          "strong",
+          COND(GT(ABS(correlation_orders_spend), 0.3), "moderate", "weak")
+        )
+
+### Statistical Hypothesis Testing
+FIND ab_test_results
+WHERE experimentId = "checkout_optimization_v2"
+SELECT:
+  - experimentId
+  - TTEST(controlGroup.conversionRate, testGroup.conversionRate) AS pValue
+  - ANOVA(allGroups.conversionRate) AS fStatistic
+  - CHI_SQUARE(observed.conversions, expected.conversions) AS chiSquareStatistic
+  - sampleSize
+EXPECT 1 result
+
+=== Time-Series Analysis === // Advanced temporal analytics
+
+### Time-Series with Moving Averages and Trends
+AGGREGATE stock_prices
+PIPELINE:
+  - MATCH:
+      - symbol = "TECH_STOCK"
+      - date >= "{{$pastDate:365d}}"
+  - SORT date ASC
+  - ADD_FIELDS:
+      - movingAvg7 = MOVING_AVERAGE(closePrice, 7)
+      - movingAvg30 = MOVING_AVERAGE(closePrice, 30)
+      - expMovingAvg = EXPONENTIAL_MOVING_AVERAGE(closePrice, 0.1)
+      - trendSlope = LINEAR_TREND(closePrice, date)
+      - seasonality = SEASONAL_DECOMPOSE(closePrice, 7)
+      - volatility = STD_DEV_WINDOW(closePrice, 30)
+  - MATCH date >= "{{$pastDate:30d}}"
+  - PROJECT:
+      - date
+      - closePrice
+      - movingAvg7
+      - movingAvg30
+      - trendDirection = COND(GT(trendSlope, 0), "upward", "downward")
+
+### Forecasting Pipeline
+AGGREGATE revenue_forecast
+PIPELINE:
+  - MATCH date >= "{{$pastDate:24m}}"
+  - TIME_SERIES_FORECAST:
+      - valueField = "monthlyRevenue"
+      - timeField = "date"
+      - periods = 6
+      - method = "linear"
+      - seasonality = "monthly"
+      - confidence = 0.95
+  - PROJECT:
+      - forecastMonth
+      - predictedRevenue
+      - confidenceInterval
+      - actualRevenue
+      - forecastAccuracy
+
+=== Machine Learning Operations === // ML pipeline integration
+
+### Data Preprocessing
+PREPROCESS customer_features
+OPERATIONS:
+  - NORMALIZE: totalSpent, "minmax"
+  - SCALE: loginCount, "zscore"
+  - ONE_HOT_ENCODE: customerCategory
+  - DISCRETIZE: age, [18, 30, 45, 60, 100]
+
+### Data Quality Validation
+VALIDATE_DATA customer_profiles
+CHECKS:
+  - NULL_CHECK: ["email", "userId", "registrationDate"]
+  - RANGE_CHECK: { "age": [0, 150], "creditScore": [300, 850] }
+  - FORMAT_CHECK: { "email": "email", "phone": "phone" }
+  - OUTLIER_CHECK: { "totalSpent": 3, "loginCount": 2.5 }
+EXPECT_QUALITY > 0.95
+
+### Model Training
+TRAIN_MODEL customer_churn_prediction
+FEATURES:
+  - loginFrequency
+  - daysSinceLastLogin
+  - totalSpent
+  - supportTicketCount
+  - productCategoriesUsed
+TARGET: churned
+ALGORITHM: "random_forest"
+VALIDATION: "cross_validation"
+SAVE_MODEL_AS: "churn_model_v1.2"
+
+### Model Prediction
+PREDICT churn_predictions
+MODEL: "churn_model_v1.2"
+DATA: active_customers
+WHERE:
+  - isActive = true
+  - lastLogin >= "{{$pastDate:180d}}"
+OUTPUT_FIELD: "churnProbability"
+
+### Model Performance Evaluation
+EVALUATE_MODEL churn_model_v1.2
+TEST_DATA: validation_customers
+METRICS:
+  - accuracy
+  - precision
+  - recall
+  - f1Score
+  - auc
+EXPECT:
+  - accuracy > 0.85
+  - precision > 0.80
+  - recall > 0.75
+
+=== Replica Set Operations === // High availability management
+
+### Check Replica Set Health
+REPLICA_SET_STATUS
+EXPECT:
+  - primary EXISTS
+  - secondaries >= 2
+  - health = "ok"
+  - replicationLag < 10
+
+### Configure Read Preferences
+SET_READ_PREFERENCE
+MODE: "secondaryPreferred"
+TAG_SETS: [{ "region": "us-east", "datacenter": "dc1" }, { "region": "us-west" }]
+MAX_STALENESS: 120
+
+### Set Write Concern for Durability
+SET_WRITE_CONCERN
+W: "majority"
+J: true
+W_TIMEOUT: 5000
+
+=== Sharding Operations === // Distributed database management
+
+### Enable Sharding on Database
+ENABLE_SHARDING advanced_ecommerce
+
+### Shard Collection with Hash Key
+SHARD_COLLECTION user_analytics
+SHARD_KEY: { "userId": "hashed" }
+UNIQUE: false
+
+### Add New Shard to Cluster
+ADD_SHARD "shard3/replica1:27017,replica2:27017,replica3:27017"
+
+### Check Shard Distribution Balance
+SHARD_STATS orders
+EXPECT_BALANCED: true
+MAX_CHUNK_IMBALANCE: 2
+
+### Move Chunk for Load Balancing
+MOVE_CHUNK user_analytics
+CHUNK: { "userId": { "$minKey": 1, "$maxKey": "user_50000" } }
+TO_SHARD: "shard2"
+
+### Shard Collection with Compound Key
+SHARD_COLLECTION time_series_data
+SHARD_KEY: { "timestamp": 1, "deviceId": 1 }
+UNIQUE: false
+
+=== Advanced Performance Monitoring === // Comprehensive optimization
+
+### Index Usage Analysis with Advanced Metrics
+EXPLAIN
+OPERATION:
+  AGGREGATE user_behavior
+  PIPELINE:
+    - MATCH:
+        - lastActive >= "{{$pastDate:30d}}"
+        - totalSpent > 100
+    - LOOKUP orders ON userId = customerId AS userOrders
+    - UNWIND userOrders
+    - GROUP BY userId:
+        - avgOrderValue = AVG(userOrders.amount)
+        - orderCount = COUNT(*)
+    - MATCH orderCount > 5
+OPTIONS:
+  - Mode = "allPlansExecution"
+  - Verbose = true
+EXPECT:
+  - executionTimeMillis < 500
+  - totalKeysExamined < 10000
+  - indexUsage = "optimal"
+
+### Comprehensive Performance Profiling
+PROFILE
+LEVEL: 2
+SLOW_MS: 50
+OPERATIONS: ["find", "update", "aggregate", "insert"]
+FILTER:
+  - ns = "advanced_ecommerce.orders"
+  - ts >= "{{$pastDate:1h}}"
+
+### Database Statistics and Health Check
+GET_DATABASE_STATS advanced_ecommerce
+EXPECT:
+  - dataSize < 10000000000  # 10GB
+  - indexSize < 2000000000  # 2GB
+  - avgObjSize < 10000      # 10KB
+  - collections > 0 

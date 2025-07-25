@@ -1,0 +1,225 @@
+(* MongoDB .data File Format Grammar *)
+
+(* Main Structure *)
+dataFile = { element } ;
+
+element = collectionTypeHint 
+        | operation 
+        | section 
+        | variable 
+        | comment 
+        | gridfsOperation 
+        | changeStreamOperation 
+        | replicaSetOperation 
+        | shardingOperation 
+        | mlOperation ;
+
+(* Comments *)
+comment = hashComment | doubleSlashComment ;
+hashComment = "#" { any_character - newline } newline ;
+doubleSlashComment = "//" { any_character - newline } newline ;
+inlineComment = ( hashComment | doubleSlashComment ) ;
+
+(* Sections *)
+section = "===" whitespace sectionName whitespace "===" [ inlineComment ] newline ;
+sectionName = { letter | digit | whitespace | "_" | "-" } ;
+
+(* System Directives *)
+collectionTypeHint = "@COLLECTION_ID_TYPE" whitespace collectionName whitespace "=" whitespace idType [ inlineComment ] newline ;
+idType = "ObjectId" | "GUID" | "UUID" | "String" | "Number" ;
+
+(* Type Casting *)
+typeCastValue = typeCastFunction "(" value ")" ;
+typeCastFunction = objectIdCast | guidCast | uuidCast | numberCast | stringCast | dateCast ;
+objectIdCast = "ObjectId" ;
+guidCast = "GUID" ;
+uuidCast = "UUID" ;
+numberCast = "Number" ;
+stringCast = "String" ;
+dateCast = "Date" ;
+
+(* Variables *)
+variable = "@" identifier whitespace "=" whitespace value [ inlineComment ] newline ;
+
+(* Operations *)
+operation = ( insertOperation
+            | insertManyOperation  
+            | updateOperation
+            | upsertOperation
+            | deleteOperation
+            | findOperation
+            | aggregateOperation
+            | createIndexOperation
+            | dropIndexOperation
+            | createCollectionWithSchema
+            | createCollectionWithJsonSchema
+            | defineEmbeddedTypeOperation
+            | validateSchemaOperation
+            | transactionOperation
+            | conditionalOperation
+            | loadTestOperation
+            | benchmarkOperation
+            | explainOperation
+            | profileOperation
+            | indexStatsOperation
+            | reindexOperation
+            | useIndexOperation
+            | maxTimeMsOperation
+            | commentOperation
+            | allowDiskUseOperation
+            | tryOperation
+            | expectErrorOperation
+            | arrayOperation ) [ inlineComment ] newline ;
+
+(* Basic CRUD Operations *)
+insertOperation = "INSERT" whitespace collectionName whitespace jsonObject ;
+insertManyOperation = "INSERT_MANY" whitespace collectionName whitespace jsonArray ;
+updateOperation = "UPDATE" whitespace collectionName [ whereClause ] [ setClause ] ;
+upsertOperation = "UPSERT" whitespace collectionName [ whereClause ] [ setClause ] ;
+deleteOperation = "DELETE" whitespace collectionName [ whereClause ] ;
+findOperation = "FIND" whitespace collectionName [ whereClause ] [ selectClause ] [ sortClause ] [ limitClause ] [ skipClause ] ;
+
+(* Advanced Operations *)
+aggregateOperation = "AGGREGATE" whitespace collectionName "PIPELINE:" { pipelineStage } ;
+createIndexOperation = "CREATE_INDEX" "ON" whitespace collectionName "FIELDS:" { indexField } [ "OPTIONS:" { indexOption } ] ;
+dropIndexOperation = "DROP_INDEX" whitespace collectionName whitespace string ;
+
+(* Schema Operations *)
+createCollectionWithSchema = "CREATE_COLLECTION" whitespace collectionName "SCHEMA:" { schemaField } ;
+createCollectionWithJsonSchema = "CREATE_COLLECTION" whitespace collectionName "JSON_SCHEMA:" jsonObject ;
+defineEmbeddedTypeOperation = "DEFINE_EMBEDDED_TYPE" whitespace typeName "FIELDS:" { schemaField } ;
+validateSchemaOperation = "VALIDATE_SCHEMA" whitespace collectionName "EXPECT" ( "Valid" | "Invalid" ) ;
+
+(* Transaction Operations *)
+transactionOperation = beginTransaction | commitTransaction | rollbackTransaction ;
+beginTransaction = "BEGIN_TRANSACTION" ;
+commitTransaction = "COMMIT_TRANSACTION" ;
+rollbackTransaction = "ROLLBACK_TRANSACTION" ;
+
+(* Conditional Operations *)
+conditionalOperation = ifOperation | ifExistsOperation | ifCountOperation ;
+ifOperation = "IF" condition "THEN:" { operation } [ "ELSE:" { operation } ] ;
+ifExistsOperation = "IF_EXISTS" collectionName [ whereClause ] "THEN:" { operation } [ "ELSE:" { operation } ] ;
+ifCountOperation = "IF_COUNT" collectionName [ whereClause ] operator value "THEN:" { operation } [ "ELSE:" { operation } ] ;
+
+(* Performance Operations *)
+loadTestOperation = "LOAD_TEST" collectionName "COUNT" number [ "TEMPLATE:" { templateField } ] ;
+benchmarkOperation = "BENCHMARK" operation [ "ITERATIONS" number ] [ "EXPECT" performanceMetric ] ;
+explainOperation = "EXPLAIN" "OPERATION:" operation [ "OPTIONS:" { explainOption } ] [ "EXPECT" expectation ] ;
+profileOperation = "PROFILE" [ "LEVEL:" number ] [ "SLOW_MS:" number ] [ "OPERATIONS:" jsonArray ] ;
+indexStatsOperation = "INDEX_STATS" collectionName ;
+reindexOperation = "REINDEX" "COLLECTION" collectionName ;
+useIndexOperation = "USE_INDEX" whitespace string ;
+maxTimeMsOperation = "MAX_TIME_MS" whitespace number ;
+commentOperation = "COMMENT" whitespace string ;
+allowDiskUseOperation = "ALLOW_DISK_USE" whitespace boolean ;
+
+(* Error Handling *)
+tryOperation = "TRY:" { operation } "CATCH" [ errorType ] ":" { operation } ;
+expectErrorOperation = "EXPECT_ERROR" [ errorType ] ;
+errorType = "ValidationError" | "DuplicateKeyError" | "ConnectionError" | string ;
+
+(* Array Operations *)
+arrayOperation = pushOperation | addUniqueOperation | removeOperation | removeAllOperation ;
+pushOperation = "PUSH" collectionName [ whereClause ] "FIELD" fieldPath "VALUE" value ;
+addUniqueOperation = "ADD_UNIQUE" collectionName [ whereClause ] "FIELD" fieldPath "VALUE" value ;
+removeOperation = "REMOVE" collectionName [ whereClause ] "FIELD" fieldPath "VALUE" value ;
+removeAllOperation = "REMOVE_ALL" collectionName [ whereClause ] "FIELD" fieldPath "VALUES" jsonArray ;
+
+(* GridFS Operations *)
+gridfsOperation = gridFsPutOperation | gridFsGetOperation | gridFsDeleteOperation | gridFsRenameOperation ;
+gridFsPutOperation = "GRIDFS_PUT" "FILE" string [ "METADATA" jsonObject ] ;
+gridFsGetOperation = "GRIDFS_GET" ( "FILE" string | "ID" value ) ;
+gridFsDeleteOperation = "GRIDFS_DELETE" ( "FILE" string | "ID" value ) ;
+gridFsRenameOperation = "GRIDFS_RENAME" "FROM" string "TO" string ;
+
+(* Change Stream Operations *)
+changeStreamOperation = watchOperation | watchDatabaseOperation | closeWatchOperation ;
+watchOperation = "WATCH" collectionName [ "FILTER" jsonObject ] [ "ON_CHANGE" { operation } ] ;
+watchDatabaseOperation = "WATCH_DATABASE" [ "FILTER" jsonObject ] [ "ON_CHANGE" { operation } ] ;
+closeWatchOperation = "CLOSE_WATCH" [ string ] ;
+
+(* Replica Set Operations *)
+replicaSetOperation = replicaSetStatusOperation | setReadPreferenceOperation | setWriteConcernOperation ;
+replicaSetStatusOperation = "REPLICA_SET_STATUS" ;
+setReadPreferenceOperation = "SET_READ_PREFERENCE" ( "primary" | "secondary" | "nearest" ) ;
+setWriteConcernOperation = "SET_WRITE_CONCERN" jsonObject ;
+
+(* Sharding Operations *)
+shardingOperation = enableShardingOperation | shardCollectionOperation | addShardOperation | shardStatsOperation ;
+enableShardingOperation = "ENABLE_SHARDING" whitespace string ;
+shardCollectionOperation = "SHARD_COLLECTION" whitespace collectionName "KEY" jsonObject ;
+addShardOperation = "ADD_SHARD" whitespace string ;
+shardStatsOperation = "SHARD_STATS" [ collectionName ] ;
+
+(* Machine Learning Operations *)
+mlOperation = trainModelOperation | predictOperation | evaluateModelOperation ;
+trainModelOperation = "TRAIN_MODEL" string "DATA" collectionName [ "FEATURES" jsonArray ] [ "TARGET" string ] ;
+predictOperation = "PREDICT" "MODEL" string "DATA" jsonObject ;
+evaluateModelOperation = "EVALUATE_MODEL" string "TEST_DATA" collectionName ;
+
+(* Query Components *)
+whereClause = "WHERE" [ ":" ] { condition } ;
+setClause = "SET" [ ":" ] { assignment } ;
+selectClause = "SELECT" [ ":" ] { fieldPath } ;
+sortClause = "SORT" { sortField } ;
+limitClause = "LIMIT" number ;
+skipClause = "SKIP" number ;
+
+(* Schema Definition *)
+schemaField = fieldPrefix identifier ":" schemaFieldType [ schemaConstraints ] ;
+fieldPrefix = "*" | "-" | "!" | "@" | "~" | ">" | "$" | "" ;
+schemaFieldType = primitiveType | arrayType | objectType | embeddedType ;
+primitiveType = "String" | "Number" | "Boolean" | "Date" | "ObjectId" | "GUID" | "UUID" | "null" ;
+arrayType = "Array" "<" schemaFieldType ">" ;
+objectType = "Object" [ "<" identifier ">" ] ;
+embeddedType = identifier ;
+schemaConstraints = "[" { schemaConstraint } "]" ;
+schemaConstraint = "PK" | "AUTO" | "AUTO_INCREMENT" | "REQUIRED" | "OPTIONAL" | "UNIQUE" | "FK:" string | "DEFAULT:" value | "ENUM:" valueList | "PATTERN:" string | "FORMAT:" string | "RANGE:" value ":" value | "MIN:" value | "MAX:" value | "MINLENGTH:" number | "MAXLENGTH:" number | "MIN_ITEMS:" number | "MAX_ITEMS:" number ;
+
+(* Values and Expressions *)
+value = literal | variable | function | typeCastValue | mathematicalExpression ;
+literal = string | number | boolean | null | jsonObject | jsonArray ;
+variable = "{{" identifier "}}" ;
+function = "{{$" functionName [ ":" functionArgs ] "}}" ;
+functionName = "now" | "timestamp" | "randomGUID" | "randomUUID" | "randomObjectId" | "randomInt" | "randomFloat" | "randomDate" | "randomChoice" | "randomBool" | "index" | "futureDate" | "pastDate" | "dateFormat" ;
+functionArgs = { value ":" } value ;
+
+(* Mathematical Expressions *)
+mathematicalExpression = mathematicalFunction "(" { value } ")" ;
+mathematicalFunction = dateFunction | numericFunction | stringFunction | arrayFunction | conditionalFunction | geospatialFunction | statisticalFunction | timeSeriesFunction ;
+dateFunction = "YEAR" | "MONTH" | "DAY" | "HOUR" | "MINUTE" | "SECOND" | "DAY_OF_WEEK" | "DAY_OF_YEAR" | "WEEK" | "DATE_ADD" | "DATE_SUB" | "DATE_DIFF" | "CONVERT_TIMEZONE" | "FORMAT_TIMEZONE" ;
+numericFunction = "ABS" | "SQRT" | "POWER" | "MOD" | "CEIL" | "FLOOR" | "ROUND" | "TRUNC" | "ADD" | "SUBTRACT" | "MULTIPLY" | "DIVIDE" | "MIN" | "MAX" | "SUM" | "AVG" | "COUNT" ;
+stringFunction = "STRLEN" | "SUBSTR" | "CONCAT" | "UPPER" | "LOWER" | "TRIM" | "MATCHES" | "STARTS_WITH" | "ENDS_WITH" | "CONTAINS" ;
+arrayFunction = "SIZE" | "IN" | "ELEM_MATCH" | "PUSH" | "ADD_UNIQUE" | "REMOVE" ;
+conditionalFunction = "COND" | "IF" | "GT" | "GTE" | "LT" | "LTE" | "EQ" | "NE" | "AND" | "OR" | "NOT" ;
+geospatialFunction = "GEO_WITHIN" | "GEO_INTERSECTS" | "GEO_NEAR" | "GEO_DISTANCE" | "GEO_AREA" | "GEO_CENTROID" ;
+statisticalFunction = "MEDIAN" | "MODE" | "STD_DEV" | "VARIANCE" | "PERCENTILE" | "SKEWNESS" | "KURTOSIS" | "CORRELATION" | "COVARIANCE" | "LINEAR_REGRESSION" ;
+timeSeriesFunction = "MOVING_AVERAGE" | "EXPONENTIAL_MOVING_AVERAGE" | "LINEAR_TREND" | "SEASONAL_DECOMPOSE" | "TIME_SERIES_FORECAST" ;
+
+(* JSON Types *)
+jsonObject = "{" { jsonProperty } "}" ;
+jsonArray = "[" { value } "]" ;
+jsonProperty = string ":" value ;
+
+(* Basic Types *)
+string = '"' { stringChar } '"' ;
+number = [ "-" ] { digit } [ "." { digit } ] ;
+boolean = "true" | "false" ;
+null = "null" ;
+identifier = letter { letter | digit | "_" } ;
+collectionName = identifier ;
+fieldPath = identifier { "." identifier } ;
+
+(* Operators and Conditions *)
+condition = fieldPath operator value | mathematicalExpression ;
+operator = "=" | "!=" | ">" | ">=" | "<" | "<=" | "IN" | "NOT_IN" | "MATCHES" | "STARTS_WITH" | "ENDS_WITH" | "CONTAINS" | "BETWEEN" | "EXISTS" | "TYPE" | "SIZE" | "ELEM_MATCH" ;
+assignment = fieldPath "=" value ;
+
+(* Characters *)
+newline = "\n" | "\r\n" ;
+whitespace = " " | "\t" ;
+any_character = ? any Unicode character ? ;
+letter = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+stringChar = ? any character except '"' and '\' ? | '\"' | '\\' ; 

@@ -1,0 +1,690 @@
+# MongoDB .data File Format - Basic Operations Examples
+
+# =============================================================================
+# Comments Section - Demonstrating comment syntax
+# =============================================================================
+
+// Both hash (#) and double-slash (//) comments are supported
+// Characters after # or // are ignored until end of line
+
+=== Comment Examples === // This section shows comment usage
+
+# Full-line hash comment
+// Full-line double-slash comment
+
+INSERT comment_demo
+{
+  "_id": "demo_001",                   # Inline hash comment
+  "title": "Comment Demo",             // Inline double-slash comment
+  "description": "Shows comment styles", # Hash style
+  "mixed": true,                       // Double-slash style
+  "data": {
+    "field1": "value1",                # Nested hash comment
+    "field2": "value2",                // Nested double-slash comment
+    "field3": [
+      "item1",                         # Array item comment
+      "item2",                         // Another array comment
+      "item3"                          # Final item comment
+    ]
+  },
+  "timestamp": "{{$now}}"              # Generated timestamp
+}
+
+// You can mix comment styles freely in the same file
+FIND comment_demo
+WHERE _id = "demo_001"                 # Filter condition
+SELECT:
+  - title                              // Project title field
+  - description                        # Project description
+  - mixed                              // Project mixed field
+
+# Multi-line comments can be written
+# by using multiple single-line comments
+# like this block explaining the next operation
+
+UPDATE comment_demo
+WHERE _id = "demo_001"                 # Target specific document
+SET:
+  - updated = true                     // Mark as updated
+  - lastModified = "{{$now}}"          # Set modification time
+
+// Comments help document complex operations
+DELETE comment_demo
+WHERE _id = "demo_001"                 # Remove the demo document
+
+=== Variables and System Directives === // Configuration section
+
+MONGO localhost:27017/roadwarrior
+
+=== Variable Declarations === // Test data identifiers
+@testAccountId = basic-test-account-123
+@testUserId = basic-test-user-456
+@tempDataId = temp-data-789
+
+=== Date vs String Detection === // Content-based detection (strings starting with numbers)
+
+### Default Behavior: Strings Remain Strings
+INSERT default_behavior
+{
+  "_id": "default_001",
+  "title": "Meeting with client",         # → String (starts with 'M', not scanned)
+  "description": "Important discussion",  # → String (starts with 'I', not scanned)
+  "status": "scheduled",                  # → String (starts with 's', not scanned)
+  "category": "business"                  # → String (starts with 'b', not scanned)
+}
+
+### Content-Based Date Detection (Strings Starting with Numbers)
+INSERT content_detection
+{
+  "_id": "content_001",
+  
+  # Strings starting with digits → scanned for date patterns → detected as dates:
+  "eventDate": "2024-01-15T10:30:00Z",    # → Date object (ISO 8601 detected)
+  "scheduledFor": "2024-01-15",           # → Date object (date only detected)
+  "meetingTime": "01/15/2024",            # → Date object (US format detected)
+  "deadline": "15/01/2024",               # → Date object (European detected)
+  "timestamp": "1705320600000",           # → Date object (Unix millis detected)
+  "startTime": "09:30:00",                # → Date object (time detected)
+  "endTime": "17:30",                     # → Date object (time detected)
+  "year": "2024",                         # → Date object (year detected)
+  
+  # Strings starting with digits → scanned → no date match → remain strings:
+  "phoneNumber": "555-123-4567",          # → String (not a date pattern)
+  "productCode": "12345-ABC",             # → String (not a date pattern)
+  "version": "2024.1.5",                  # → String (not a date pattern)
+  "serialNumber": "20240115001",          # → String (too long for timestamp)
+  "quantity": "100",                      # → String (numeric but not date)
+  "zipCode": "90210",                     # → String (numeric but not date)
+  
+  # Strings not starting with digits → not scanned → remain strings:
+  "title": "Meeting on 2024-01-15",       # → String (starts with 'M')
+  "description": "Due January 15th",      # → String (starts with 'D')
+  "notes": "Call at 9:30 AM",            # → String (starts with 'C')
+  "location": "Room A"                    # → String (starts with 'R')
+}
+
+### Explicit Type Control (Override Detection)
+INSERT explicit_control
+{
+  "_id": "explicit_001",
+  
+  # Force Date objects (even when content wouldn't auto-detect):
+  "buildDate": Date("January 15, 2024"),     # → Date object (starts with letter, explicit)
+  "releaseDate": Date("Q1 2024"),            # → Date object (starts with letter, explicit)
+  "customDate": Date("Meeting: 2024-01-15"), # → Date object (starts with letter, explicit)
+  
+  # Force Strings (override auto-detection):
+  "versionDate": String("2024-01-15"),       # → String (would auto-detect as date)
+  "buildNumber": String("20240115"),         # → String (would auto-detect as date)
+  "timestamp": String("1705320600"),         # → String (would auto-detect as date)
+  "coordinates": String("40.7128,-74.0060"), # → String (would remain string anyway)
+  
+  # Natural behavior (no override needed):
+  "description": "Released on 2024-01-15",   # → String (starts with 'R')
+  "status": "active"                         # → String (starts with 'a')
+}
+
+### Built-in Date Functions (Always Date Objects)
+INSERT builtin_functions
+{
+  "_id": "builtin_001",
+  
+  # Built-in functions always create appropriate types:
+  "createdAt": "{{$now}}",                   # → Date object (function)
+  "expiresAt": "{{$futureDate:7d}}",         # → Date object (function)
+  "lastActivity": "{{$pastDate:1h}}",        # → Date object (function)
+  "unixTimestamp": "{{$timestamp}}",         # → Number (Unix timestamp function)
+  "reportDate": "{{$dateFormat:{{$now}}:YYYY-MM-DD}}", # → String (formatted date function)
+  
+  # Functions work with any field name:
+  "customEventTime": "{{$now}}",             # → Date object (function)
+  "randomExpiry": "{{$futureDate:30d}}",     # → Date object (function)
+  "sessionStart": "{{$pastDate:2h}}"         # → Date object (function)
+}
+
+### Content Detection Priority Examples
+INSERT priority_examples
+{
+  "_id": "priority_001",
+  
+  # Priority 1: Explicit casting (highest)
+  "forcedString": String("2024-01-15T10:30:00Z"),   # → String (explicit overrides detection)
+  "forcedDate": Date("Meeting on January 15th"),    # → Date (explicit overrides non-detection)
+  
+  # Priority 2: Built-in functions
+  "dynamicDate": "{{$now}}",                        # → Date object (function)
+  "dynamicTimestamp": "{{$timestamp}}",             # → Number (function)
+  
+  # Priority 3: Content-based detection (starts with digit + pattern match)
+  "eventDate": "2024-01-15T10:30:00Z",              # → Date object (starts with 2, matches ISO)
+  "meetingTime": "01/15/2024",                      # → Date object (starts with 0, matches US)
+  "phoneNumber": "555-123-4567",                    # → String (starts with 5, no date match)
+  "version": "2024.1.5",                            # → String (starts with 2, no date match)
+  
+  # Priority 4: Default string behavior (lowest)
+  "title": "Meeting on 2024-01-15",                 # → String (starts with M, not scanned)
+  "description": "Important discussion",             # → String (starts with I, not scanned)
+  "status": "active"                                # → String (starts with a, not scanned)
+}
+
+### Query Examples with Different Detection Results
+# Query Date objects (content was auto-detected as dates)
+FIND events
+WHERE:
+  - eventDate >= "2024-01-01T00:00:00Z"          # Date comparison (was detected)
+  - YEAR(scheduledFor) = 2024                    # Date function (was detected)
+  - meetingTime BETWEEN ["01/01/2024", "12/31/2024"] # Date range (was detected)
+SELECT:
+  - _id
+  - eventDate
+  - scheduledFor
+  - meetingTime
+
+# Query String values (content remained as strings)  
+FIND events
+WHERE:
+  - phoneNumber MATCHES "555-.*"                 # Regex (remained string)
+  - productCode STARTS_WITH "12345"             # String function (remained string)  
+  - LENGTH(version) > 5                         # String function (remained string)
+  - title CONTAINS "Meeting"                    # String search (remained string)
+SELECT:
+  - _id
+  - phoneNumber
+  - productCode
+  - version
+  - title
+
+### Best Practices Examples
+INSERT best_practices
+{
+  "_id": "best_001",
+  
+  # ✅ Rely on automatic content detection (most common):
+  "eventDate": "2024-01-15T10:30:00Z",          # Auto-detected as Date
+  "scheduledFor": "01/15/2024",                 # Auto-detected as Date
+  "startTime": "09:30:00",                      # Auto-detected as Date
+  "title": "Important Meeting",                 # Natural String
+  
+  # ✅ Use built-in functions for dynamic dates:
+  "createdAt": "{{$now}}",                      # Ensures Date object
+  "expiresAt": "{{$futureDate:7d}}",            # Ensures Date object
+  
+  # ✅ Use explicit casting only when detection is wrong:
+  "buildNumber": String("20240115"),            # Force String (would detect as date)
+  "naturalDate": Date("January 15th, 2024"),    # Force Date (starts with letter)
+  
+  # ✅ Keep non-date numeric strings as strings:
+  "phoneNumber": "555-123-4567",                # Natural String (no date pattern)
+  "productId": "12345-ABC",                     # Natural String (no date pattern)
+  "version": "2024.1.5"                        # Natural String (no date pattern)
+}
+
+=== Date and Time Examples === // Comprehensive date/time handling
+
+### Natural Date/Time Strings (Most Common)
+INSERT events
+{
+  "_id": "event_001",
+  "startTime": "2024-01-15T10:30:00Z",        # ISO 8601 UTC
+  "endTime": "2024-01-15T14:30:00-05:00",     # With timezone
+  "publishDate": "2024-01-15",                # Date only
+  "registrationDeadline": "2024-01-14T23:59:59Z" # Full timestamp
+}
+
+INSERT appointments
+{
+  "_id": "appt_001", 
+  "scheduledFor": "January 15, 2024 10:30 AM", # Natural language
+  "duration": 60,                             # Minutes (number)
+  "reminderTime": "2024/01/15 09:30",         # Alternative format
+  "isAllDay": false                           # Boolean
+}
+
+### Built-in Date Functions
+INSERT sessions
+{
+  "_id": "{{$randomUUID}}",
+  "createdAt": "{{$now}}",                    # Current timestamp
+  "expiresAt": "{{$futureDate:7d}}",          # 7 days from now
+  "lastActivity": "{{$pastDate:1h}}",         # 1 hour ago
+  "token": "token_{{$timestamp}}"             # Unix timestamp in string
+}
+
+INSERT notifications
+{
+  "_id": "notif_{{$timestamp}}",
+  "scheduledFor": "{{$futureDate:30m}}",      # 30 minutes from now
+  "validUntil": "{{$futureDate:24h}}",        # 24 hours from now
+  "createdDate": "{{$dateFormat:{{$now}}:YYYY-MM-DD}}", # 2024-01-15
+  "displayTime": "{{$dateFormat:{{$now}}:MMM DD, YYYY HH:mm}}" # Jan 15, 2024 10:30
+}
+
+### Explicit Date Casting
+INSERT logs
+{
+  "_id": "log_001",
+  "timestamp": Date("2024-01-15T10:30:00Z"),  # Force Date object
+  "eventDate": Date("2024-01-15"),            # Date-only as Date object
+  "processingTime": 1500,                     # Milliseconds (number)
+  "level": "INFO"                             # String
+}
+
+### Time-only Values
+INSERT schedules
+{
+  "_id": "schedule_001",
+  "openTime": "09:00:00",                     # Time string HH:MM:SS
+  "closeTime": "17:30",                       # Time string HH:MM
+  "breakStart": Date("12:00:00"),             # Time as Date object
+  "breakEnd": Date("13:00:00"),               # Time as Date object
+  "isWeekend": false                          # Boolean
+}
+
+### Unix Timestamps
+INSERT metrics
+{
+  "_id": "metric_001",
+  "epochSeconds": 1705320600,                 # Unix timestamp (seconds)
+  "epochMillis": 1705320600000,               # Unix timestamp (milliseconds)
+  "convertedDate": Date(1705320600000),       # Convert to Date object
+  "measurementValue": 42.5                    # Number
+}
+
+### Date Queries and Comparisons
+FIND orders
+WHERE:
+  - createdAt >= "2024-01-01T00:00:00Z"      # String date comparison
+  - createdAt < Date("2024-02-01T00:00:00Z") # Date object comparison
+  - updatedAt > "{{$pastDate:30d}}"          # Relative date
+  - status = "active"                        # String comparison
+SELECT:
+  - _id
+  - customerId
+  - total
+  - createdAt
+SORT createdAt DESC
+LIMIT 10
+
+### Date Arithmetic in Updates
+UPDATE subscriptions
+WHERE _id = "sub_001"
+SET:
+  - renewalDate = DATE_ADD(startDate, "1y")   # Add 1 year
+  - trialDays = DATE_DIFF(trialEndDate, "{{$now}}", "days") # Days remaining
+  - lastBillingDate = "{{$pastDate:30d}}"     # 30 days ago
+  - isActive = true                           # Boolean
+
+### Special Date Cases
+INSERT user_profiles
+{
+  "_id": "user_001",
+  "birthDate": Date("1990-01-15"),            # Date object required
+  "registrationDate": "{{$now}}",             # Auto-generated
+  "lastLoginDate": null,                      # No value yet
+  "accountExpiryDate": "{{$futureDate:365d}}", # 1 year from now
+  "timezone": "America/New_York",             # String
+  "preferredDateFormat": "MM/DD/YYYY"         # String
+}
+
+=== Type Casting Examples === // Specify ID types without schemas
+
+### Implicit Type Casting (Default - Most Common)
+# Natural types inferred automatically - no casting functions needed
+INSERT products
+{
+  "_id": "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",  # GUID (smart detection)
+  "name": "Wireless Headphones",      # String (natural)
+  "price": 99.99,                     # Number (natural)
+  "inStock": true,                    # Boolean (natural)
+  "quantity": 42,                     # Number (natural)
+  "tags": ["electronics", "audio"]    # Array<String> (natural)
+}
+
+INSERT users
+{
+  "_id": "507f1f77bcf86cd799439020",   # ObjectId (smart detection)
+  "email": "john@example.com",        # String (natural)
+  "age": 30,                          # Number (natural)
+  "isActive": true,                   # Boolean (natural)
+  "preferences": {                    # Object (natural)
+    "theme": "dark",                  # String (natural)
+    "notifications": false            # Boolean (natural)
+  }
+}
+
+### Explicit Type Casting (When Needed)
+# Only use when you need to override natural inference
+INSERT orders
+{
+  "_id": GUID("F47AC10B-58CC-4372-A567-0E02B2C3D479"),    # Force GUID type
+  "userId": ObjectId("507f191e810c19729de860ea"),         # Force ObjectId type
+  "sessionId": UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890"), # Force UUID type
+  "orderNumber": String("12345"),     # Force String (not Number)
+  "timestamp": Date("2024-01-15T10:30:00Z"), # Force Date object
+  "total": Number("99.99")            # Force Number (from string)
+}
+
+### Smart Detection Examples (for _id fields)
+INSERT smart_detection_guid { "_id": "A1B2C3D4-E5F6-7890-ABCD-EF1234567890" }  # → GUID
+INSERT smart_detection_objectid { "_id": "507f1f77bcf86cd799439020" }          # → ObjectId  
+INSERT smart_detection_uuid { "_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }  # → UUID
+INSERT smart_detection_number { "_id": 12345 }                                # → Number
+INSERT smart_detection_string { "_id": "custom-id-001" }                      # → String
+
+### Collection Type Hints (System Directives)
+# These are predefined system directives, not user variables
+@COLLECTION_ID_TYPE users = GUID
+@COLLECTION_ID_TYPE products = ObjectId  
+@COLLECTION_ID_TYPE orders = UUID
+@COLLECTION_ID_TYPE categories = String
+@COLLECTION_ID_TYPE sequences = Number
+
+# Now all operations on these collections use the specified ID type
+INSERT products
+{
+  "_id": "507f1f77bcf86cd799439022",  # String literal auto-converted to ObjectId
+  "name": "Gaming Mouse",             # String (natural)
+  "price": 79.99                     # Number (natural)
+}
+
+FIND products WHERE _id = "507f1f77bcf86cd799439022"  # String auto-converted to ObjectId
+
+UPDATE users WHERE _id = "user_12345" SET lastLogin = "{{$now}}"  # String (natural)
+
+### Smart Type Detection (No Explicit Types)
+# Automatic detection based on patterns - no casting needed
+INSERT categories
+{
+  "_id": "507f1f77bcf86cd799439030",  # 24-char hex → ObjectId (smart detection)
+  "name": "Electronics",              # String (natural)
+  "sortOrder": 1                     # Number (natural)
+}
+
+INSERT sessions
+{
+  "_id": "550e8400-e29b-41d4-a716-446655440001",  # UUID format → UUID (smart detection) 
+  "userId": "user_12345",                          # String (natural)
+  "expiresAt": "2024-12-31T23:59:59Z"             # String (natural, could use Date() if needed)
+}
+
+INSERT tags
+{
+  "_id": "tag_electronics_2024",      # Non-pattern string → String (natural)
+  "name": "Electronics 2024",         # String (natural)
+  "count": 0                          # Number (natural)  
+}
+
+INSERT counters
+{
+  "_id": 1,                           # Number → Number (natural)
+  "name": "page_views",               # String (natural)
+  "count": 0                          # Number (natural)
+}
+
+=== Basic CRUD Operations === // Core database operations
+
+### Insert Single Document (String ID)
+INSERT users
+{
+  "_id": "user_12345",
+  "username": "john_doe",
+  "email": "john@example.com",
+  "isActive": true,
+  "createdAt": "{{$now}}"
+}
+
+### Insert Single Document (ObjectId)
+INSERT products
+{
+  "_id": "{{$randomObjectId}}",  # Auto-generates: 507f1f77bcf86cd799439020
+  "name": "Wireless Headphones",
+  "price": 99.99,
+  "category": "electronics",
+  "inStock": true
+}
+
+### Insert Single Document (UUID)
+INSERT orders
+{
+  "_id": "{{$randomUUID}}",
+  "orderNumber": "ORD-{{$randomInt:10000:99999}}",
+  "customerId": "user_12345",
+  "total": 99.99,
+  "status": "pending"
+}
+
+### Insert Many Documents (Mixed ID Types)
+INSERT_MANY sessions
+[
+  {
+    "_id": "{{$randomObjectId}}",
+    "userId": "user_12345",
+    "token": "{{$randomUUID}}",
+    "expiresAt": "{{$futureDate:7d}}"
+  },
+  {
+    "_id": "{{$randomObjectId}}",
+    "userId": "user_67890",
+    "token": "{{$randomUUID}}",
+    "expiresAt": "{{$futureDate:7d}}"
+  }
+]
+
+### Find by ObjectId (Simple String Syntax)
+FIND products WHERE _id = "507f1f77bcf86cd799439020"
+
+### Find by String ID
+FIND users WHERE _id = "user_12345"
+
+### Update by ObjectId
+UPDATE products WHERE _id = "507f1f77bcf86cd799439020" SET price = 89.99
+
+### Update by String ID
+UPDATE users WHERE _id = "user_12345" SET lastLogin = "{{$now}}"
+
+### Delete by ObjectId
+DELETE sessions WHERE _id = "507f1f77bcf86cd799439020"
+
+=== Built-in Function Examples === // Dynamic value generation
+
+### Insert Document with Built-in Functions
+INSERT logs
+{
+  "_id": "{{$randomUUID}}",
+  "Level": "INFO",
+  "Message": "Example log entry",
+  "Timestamp": "{{$now}}",
+  "EpochTime": "{{$timestamp}}"
+}
+
+### Insert Document with Date Functions
+INSERT events
+{
+  "_id": "{{$randomUUID}}",
+  "Name": "Future Event",
+  "EventDate": "{{$futureDate:7d}}",
+  "PastDate": "{{$pastDate:3h}}",
+  "NextMonth": "{{$futureDate:30d}}"
+}
+
+=== Basic Update Operations === // Modify existing data
+
+### Simple Update (Single Line)
+UPDATE users WHERE _id = "{{testUserId}}" SET LastLogin = "{{$now}}"
+
+### Multiple Field Update
+UPDATE users
+WHERE _id = "{{testUserId}}"
+SET:
+  - LastLogin = "{{$now}}"
+  - LoginCount += 1
+  - IsActive = true
+
+### Complex Update with Conditions
+UPDATE users
+WHERE:
+  - AccountId = "{{testAccountId}}"
+  - UserType = 1
+  - IsActive = true
+SET:
+  - LastSeen = "{{$now}}"
+  - LoginCount += 1
+
+=== Basic Delete Operations === // Remove test data
+
+### Simple Delete
+DELETE temp_data WHERE _id LIKE "temp-%"
+
+### Delete with Multiple Conditions
+DELETE logs
+WHERE:
+  - Level IN ["DEBUG", "TRACE"]
+  - Created < "{{$pastDate:1d}}"
+
+=== Basic Find Operations === // Query and verify data
+
+### Simple Find
+FIND users WHERE UserType = 1
+
+### Find with Selection
+FIND users WHERE IsActive = true SELECT Name, Email, Created
+
+### Find with Multiple Conditions
+FIND users
+WHERE:
+  - AccountId = "{{testAccountId}}"
+  - IsActive = true
+  - UserType = 1
+SELECT:
+  - Name
+  - Email
+  - UserType
+  - Created
+SORT Created DESC
+LIMIT 10
+
+=== Basic Array Operations === // Array manipulation
+
+### Simple Array Push
+UPDATE users WHERE _id = "{{testUserId}}" SET Tags PUSH "example"
+
+### Multiple Array Operations
+UPDATE users
+WHERE _id = "{{testUserId}}"
+SET:
+  - Tags PUSH "verified"
+  - Permissions ADD_UNIQUE "read"
+  - LoginHistory PUSH "{{$now}}"
+
+=== Basic Aggregation === // Data analysis
+
+### Simple Count
+AGGREGATE users
+PIPELINE:
+  - MATCH UserType = 1
+  - COUNT AS driverCount
+
+### Basic Grouping
+AGGREGATE users
+PIPELINE:
+  - MATCH IsActive = true
+  - GROUP BY UserType COUNT(*) AS count
+  - SORT count DESC
+
+=== Basic Index Operations === // Performance optimization
+
+### Simple Index
+CREATE_INDEX ON users FIELDS Email ASC UNIQUE
+
+### Compound Index
+CREATE_INDEX ON users
+FIELDS:
+  - AccountId ASC
+  - UserType ASC
+OPTIONS Name = "account_user_idx"
+
+=== Basic Conditional Logic === // Control flow
+
+### Simple Conditional
+IF_EXISTS users WHERE Email = "test@example.com"
+THEN UPDATE users WHERE Email = "test@example.com" SET Verified = true
+ELSE INSERT users { "_id": "{{$randomUUID}}", "Email": "test@example.com" }
+
+=== Schema Operations === // Collection and validation management
+
+### Create Collection with String ID
+CREATE_COLLECTION user_profiles
+SCHEMA:
+  * _id           : String                    [PK,REQUIRED]
+  * userId        : String                    [REQUIRED,FK:users._id]
+  * email         : String                    [REQUIRED,UNIQUE,FORMAT:email]
+  - firstName     : String                    [MAXLENGTH:50]
+  - lastName      : String                    [MAXLENGTH:50]
+  - age           : Number                    [RANGE:18:120]
+  - status        : String                    [ENUM:active,inactive,suspended,DEFAULT:active]
+  - preferences   : Object                    [OPTIONAL]
+  - createdAt     : Date                      [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+
+### Create Collection with ObjectId (MongoDB Default)
+CREATE_COLLECTION products
+SCHEMA:
+  * _id           : ObjectId                  [PK,AUTO]
+  * name          : String                    [REQUIRED,MINLENGTH:3,MAXLENGTH:100]
+  * sku           : String                    [REQUIRED,UNIQUE,PATTERN:^[A-Z0-9]{6,12}$]
+  * price         : Number                    [REQUIRED,MIN:0]
+  * categoryId    : ObjectId                  [REQUIRED,FK:categories._id]
+  - description   : String                    [MAXLENGTH:1000]
+  - inStock       : Boolean                   [DEFAULT:true]
+  - createdAt     : Date                      [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+
+### Create Collection with UUID ID
+CREATE_COLLECTION orders
+SCHEMA:
+  * _id           : UUID                      [PK,AUTO]
+  * orderNumber   : String                    [REQUIRED,UNIQUE,PATTERN:^ORD-\d{8}$]
+  * customerId    : String                    [REQUIRED,FK:customers._id]
+  * status        : String                    [REQUIRED,ENUM:pending,processing,shipped,delivered]
+  * items         : Array<Object>             [REQUIRED,MIN_ITEMS:1]
+  * total         : Number                    [REQUIRED,MIN:0]
+  - discountCode  : String                    [MAXLENGTH:20,OPTIONAL]
+  @ paymentInfo   : Object                    [ENCRYPTED,REQUIRED]
+  - notes         : String                    [MAXLENGTH:500]
+  * createdAt     : Date                      [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+  - updatedAt     : Date                      [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+
+### Create Collection with Auto-Increment Integer ID
+CREATE_COLLECTION categories
+SCHEMA:
+  * _id           : Number                    [PK,AUTO_INCREMENT]
+  * name          : String                    [REQUIRED,UNIQUE,MAXLENGTH:50]
+  - description   : String                    [MAXLENGTH:200]
+  - parentId      : Number                    [FK:categories._id]
+  - sortOrder     : Number                    [DEFAULT:0]
+  - isActive      : Boolean                   [DEFAULT:true]
+  - createdAt     : Date                      [SYSTEM,DEFAULT:CURRENT_TIMESTAMP]
+
+### Validate Schema Compliance
+VALIDATE_SCHEMA user_profiles
+EXPECT_VALID > 0.95
+
+### Validate with Conditions
+VALIDATE_SCHEMA orders
+WHERE createdAt >= "{{$pastDate:7d}}"
+EXPECT_VALID = 1.0
+
+=== Basic Performance Testing === // Load and benchmark
+
+### Simple Load Test
+LOAD_TEST test_data COUNT 100 TEMPLATE { "_id": "test-{{$index}}", "Name": "Test {{$index}}" }
+
+### Simple Benchmark
+BENCHMARK FIND users WHERE UserType = 1 ITERATIONS 100 EXPECT_TIME < 10ms
+
+=== Cleanup Operations === // Remove all test data
+
+DELETE users WHERE _id = "{{testUserId}}"
+DELETE products WHERE _id IN ["product-1", "product-2"]
+DELETE logs WHERE Level = "INFO"
+DELETE events WHERE Name = "Future Event"
+DELETE test_data WHERE _id LIKE "test-%"
+DROP_COLLECTION test_users 
